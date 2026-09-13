@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import os as _fk_os, sys as _fk_sys  # fantasy kill-switch (Will 2026-09-11)
+if _fk_os.path.exists(_fk_os.path.join(_fk_os.path.dirname(_fk_os.path.abspath(__file__)), ".fantasy-killed")):
+    _fk_sys.exit(0)
 """
 mlb_ingest.py — Daily and backfill ingest from MLB Stats API + Savant + ESPN.
 
