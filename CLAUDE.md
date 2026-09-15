@@ -1,57 +1,78 @@
-# fantasy-bot — Claude project notes
+# fantasy-db — Claude project notes
 
-Read this first. It captures the load-bearing decisions and the
-non-obvious constraints. The README documents how to run the pipeline;
-this file documents how to reason about it.
+Read this first. Repo is **`willrphillips/fantasy-db`** on GitHub; the local folder is
+`C:\Code\fantasy-db` on the PC and `~/fantasy-db` on old-will-macbook. One name everywhere.
+
+## Status (2026-09-14)
+
+| Season | State | Where it runs | Spec |
+|---|---|---|---|
+| NFL 2026 | **being built** | old-will-macbook (Tailscale `100.126.114.42`), launchd, zero AI tokens | `NFL_PLAN.md` |
+| MLB 2026 | **RETIRED 2026-09-14** | nothing runs; atlas checkout kept, timers disabled | section at the bottom of this file |
+
+`NFL_PLAN.md` is the spec for the NFL work: fixed facts, schema, the three launchd jobs, the
+Edwin read path on `:8094`, and the 11-task handover checklist. Decisions there are made; do
+not reopen them. `SCOPE_OF_WORK.md` is the dated decision log; `BACKLOG.md` opens with a
+START HERE block once task 11 lands.
 
 ## Operating preferences (how to respond)
 
 These apply to every session, both Claude Code and Claude Chat.
 
 - **Timestamp every reply.** Begin each response with a short timestamp
-  in US Eastern time, e.g. `[2026-06-08 7:21 PM EDT]` (EDT in summer,
-  EST in winter — let the clock decide).
+  in US Eastern time, e.g. `[2026-09-14 7:21 PM EDT]` (EDT in summer,
+  EST in winter; let the clock decide).
 - **Lead with the recommendation, then the numbers.** Be brief. Give the
-  call (start/sit, add/drop, trade verdict) first, justify with data
-  after. No hedging, no fantasy-is-random disclaimers.
-- **Strategy C stands.** Hard-punt SV + SB. Prioritize HR/RBI (the weak
-  cats); protect the W / ERA / WHIP / K edge. HLD is a scoring cat.
-- **Confirm everything; never fabricate.** Ground every stat in
-  `fantasy.db` / `snapshot.md`. Do NOT use live web stats to value
-  players — this league is a simulated universe and diverges from
-  real-world MLB. Cross-check db (System 2) against snapshot (System 1)
-  instead; if a number can't be confirmed, say so.
-- **Quantify roster/trade/waiver moves.** Run `playoff_odds.py` (refresh
-  its `T`/`REC` from the latest snapshot first) and report the playoff-
-  odds delta. Trust the scenario deltas over absolute levels.
-- **Trust the ESPN app for position eligibility,** not the db
-  `eligible_pos` strings (combo labels like "2B/SS" mislead).
+  call first, justify with data after. No hedging, no fantasy-is-random disclaimers.
+- **Confirm everything; never fabricate.** Ground every number in `nfl.db` (or, for the
+  retired MLB side, `fantasy.db`). Do NOT use live web stats to value players; the NFL
+  pipeline stores Yahoo's own projections and actuals, and those are the numbers that
+  score. If a number cannot be confirmed from the db, say so.
+- **No em dashes in anything that ships** (docs, READMEs, Discord copy). Use a comma,
+  colon, or two sentences.
+
+## NFL layout (target; see `NFL_PLAN.md` for the full table)
+
+| Path | What |
+|---|---|
+| `nfl/db.py` | schema + `python -m nfl.db init` (idempotent) |
+| `nfl/yahoo_api.py` | OAuth2 refresh flow; league, rosters, scoring, actual points |
+| `nfl/yahoo_web.py` | login cookie; projected points only (the API has none) |
+| `nfl/nflverse.py` | schedules, player_stats, rosters CSVs |
+| `nfl/am.py` / `nfl/pm.py` / `nfl/weekly.py` | the three launchd jobs |
+| `nfl/serve.py` | read-only HTTP on `100.126.114.42:8094` for Edwin |
+| `.secrets/` | gitignored; `yahoo.json`, `yahoo_cookie.txt`, `serve-key`. Will types values on the Mac, never in chat. |
+| `nfl.db` | gitignored; lives on the Mac |
+
+Rules that bind every NFL script: every run writes a `runs` row (crash included);
+3 retries 5 minutes apart inside the script; no Discord, no Edwin, no AI calls.
 
 ## Local workflow & syncing (VS Code)
 
-This repo is **`willrphillips/fantasy-bot`** on GitHub. The local working
-copy is a folder that may be named **`mlbstats`** — same project, just a
-different local name; its git remote points at `fantasy-bot`
-(run `git remote -v` to confirm). Editing in VS Code and pushing updates
-the GitHub repo; pulling brings GitHub's changes down. The folder and the
-repo are two ends of one pipe, not two projects.
-
-To **pull the latest** (e.g., after work was merged on GitHub):
-
 ```bash
 git status                 # check for local edits first
-git stash                  # ONLY if status shows uncommitted changes (CLAUDE.md often is)
+git stash                  # ONLY if status shows uncommitted changes
 git pull origin main
-git stash pop              # only if you stashed; resolve any conflict it reports
+git stash pop              # only if you stashed
 ```
 
-If you just want GitHub's version and don't care about local edits:
-`git fetch origin && git reset --hard origin/main` (discards local changes).
+Force-match GitHub, discarding local edits: `git fetch origin && git reset --hard origin/main`.
 
-The published-data repo (`willrphillips/fantasy-snapshots`) is **separate**
-and is never pulled here — it only receives `db_publish.py` output.
+The MLB published-data repo (`willrphillips/fantasy-snapshots`) is separate, frozen, and
+never pulled here.
 
-## What this is
+---
+
+# RETIRED 2026-09-14: the MLB pipeline
+
+Everything below describes the MLB season and is kept as the record. Nothing in it runs.
+The atlas timers were disabled and the `bot.py` loops retired on 2026-09-15 03:16 UTC
+(`SCOPE_OF_WORK.md`); the checkout and `fantasy.db` were left in place. Reversal is
+`sudo /usr/local/sbin/fantasy-restore.sh` on atlas. The MLB-specific response rules
+(Strategy C: punt SV + SB, prioritise HR/RBI, protect W/ERA/WHIP/K; trust the ESPN app for
+position eligibility; quantify moves with `playoff_odds.py`) applied to that season only.
+
+### What this is
 
 A data layer for ESPN fantasy baseball. The Hetzner box **atlas-cloud**
 pulls MLB Stats API + Baseball Savant + ESPN league state every night and
@@ -61,7 +82,7 @@ pre-baked markdown views are published to a public GitHub repo
 Chat and Claude Code can read the data without auth.
 
 **Who owns this: Edwin.** The runtime is his, at
-`/home/edwincode/edwin-repos/fantasy-bot` (symlinked `~/fantasy-bot`), under
+its atlas checkout (path in `SCOPE_OF_WORK.md` 2026-09-14; the symlink is gone), under
 his own venv. Analysis and roster moves are his to make unprompted; trades
 and anything spending money wait for Will. The iMac "Cocky-Claude" ran all
 of this until **2026-07-21** and is historical from that date, not current:
@@ -70,7 +91,7 @@ see `MIGRATION_2026-07-21.md`.
 The owner of the league is "Captain Phillips" (team_id=9, league_id
 2057904545, season=2026, 10-team head-to-head categories).
 
-## Data flow
+### Data flow
 
 All times ET. Two different schedulers, and the difference matters.
 
@@ -96,7 +117,7 @@ If you are asking "is job X scheduled?", `list-timers` answers only half the
 question. Check `fantasy_*_loop()` in `bot.py` for the other half.
 
 Failures post to Discord (`notify.py`), throttled to one alert per script per
-day via `~/fantasy-bot/.alert_state`. Email alerting was retired 2026-07-21;
+day via `<atlas checkout>/.alert_state`. Email alerting was retired 2026-07-21;
 `send_email` is `false` in the live config.
 
 The roster triage has an on/off switch: `/triage status|on|off|now` in Discord,
@@ -104,7 +125,7 @@ or write `on`/`off` into `~/codex/edwin/state/fantasy-triage-enabled.txt`. A
 missing file means on. `journalctl -u edwin.service | grep fantasy-triage` shows
 every run, and an empty result on a game day means it is not running.
 
-## Universe
+### Universe
 
 Tracked players = every active MLB player from the season-roster index
 (`/api/v1/sports/1/players?season=2026`, ~1100 players) UNIONed with
@@ -112,7 +133,7 @@ anyone on a Captain Phillips roster or in the top-200 ESPN FA pool
 within the last 30 days. The pipeline covers more than just the
 fantasy league; you can query any active MLB player.
 
-## Schema (fantasy.db)
+### Schema (fantasy.db)
 
 | Table | What it holds |
 |---|---|
@@ -137,7 +158,7 @@ daily data, so the statcast time series builds forward from
 2026-05-21 (the day the BOM bug was fixed; earlier rows are absent
 or were garbage and have been deleted).
 
-## How to query
+### How to query
 
 ```python
 import os
@@ -162,7 +183,7 @@ health()                                     # freshness + row counts
 `fantasy_lib` honors the `FANTASY_DB` env var so the same code works on
 atlas-cloud (live db) or on any machine with a downloaded copy.
 
-## Three defects fixed (load-bearing — don't undo)
+### Three defects fixed (load-bearing — don't undo)
 
 These were latent in the original chat-built code and were corrected on
 2026-05-19. Any future change that touches the same areas must respect
@@ -194,7 +215,7 @@ the constraints below.
    the right anchor for each query. `trade_scout` joins rosters at
    `latest_roster_date()` and stats at `latest_date()`.
 
-## Other constraints to know
+### Other constraints to know
 
 - **Savant CSV has a UTF-8 BOM** that breaks `csv.DictReader` quoted-
   field parsing. `fetch_savant_csv` strips it. If you ever change the
@@ -236,7 +257,7 @@ the constraints below.
   rotate immediately (log out of ESPN to invalidate cookies; revoke
   the GitHub token; generate a new Gmail app password).
 
-## Public URLs
+### Public URLs
 
 Data:
 - `https://willrphillips.github.io/fantasy-snapshots/data/fantasy.db`
@@ -251,7 +272,7 @@ Views:
 - `https://willrphillips.github.io/fantasy-snapshots/views/pull_status.md`
 - `https://willrphillips.github.io/fantasy-snapshots/views/anomaly_digest.md`
 
-## File map
+### File map
 
 | File | Purpose |
 |---|---|
@@ -272,9 +293,9 @@ Views:
 | `playoff_odds.py` | Scenario tool for quantifying a roster/trade/waiver move. |
 | `set_lineup.py`, `waiver_move.py`, `apply_pending.py` | Older CLI wrappers, superseded by `fantasy_exec.py`. See `INTEGRATION.md` §6. |
 
-## When something breaks
+### When something breaks
 
-1. On atlas-cloud, check `~/fantasy-bot/ingest.log` (or `publish.log`),
+1. On atlas-cloud, check `<atlas checkout>/ingest.log` (or `publish.log`),
    `journalctl -u fantasy-ingest.service` and friends for the timer jobs,
    and `journalctl -u edwin.service` for the brief, the publish and the
    roster triage.
@@ -288,6 +309,6 @@ Views:
    next ingest.
 
 
-## File location rule
+### File location rule
 
 Save all files inside this project folder (this directory or its subfolders). Do NOT save to Downloads, `C:\Users\willr\`, or any location outside this project. If saving elsewhere is truly required, STOP and confirm with Will first that it is the best choice for the job.

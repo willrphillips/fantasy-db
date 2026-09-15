@@ -1,3 +1,7 @@
+> **RETIRED 2026-09-14.** MLB-season document, kept as the record. Every path, timer,
+> loop and `fantasy-bot` / `mlbstats` name below is historical; nothing here runs. The
+> live project is the NFL pipeline in `NFL_PLAN.md`.
+
 # INTEGRATION.md — handing fantasy-bot's execution layer to Edwin
 
 > **Status: done. This handoff completed on 2026-07-21.** Edwin now owns the

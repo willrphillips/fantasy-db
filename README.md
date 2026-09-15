@@ -1,18 +1,68 @@
-# Fantasy Bot — Data Layer
+# fantasy-db
 
-SQLite-based MLB + ESPN fantasy ingest. Builds a daily-snapshot time series
-of every active MLB player (~1110) plus the ESPN league roster + FA pool.
-Computes L7 / L14 / L30 / any window on demand via subtraction of
-season-to-date snapshots.
+Will's fantasy sports data layer. Repo `willrphillips/fantasy-db`; local folder
+`fantasy-db` on every machine.
 
-**Related repo:** generated data + nightly markdown views are published to
-[willrphillips/fantasy-snapshots](https://github.com/willrphillips/fantasy-snapshots) —
-that's where `db_publish.py` and `league_snapshot.py` push their output every
-night. The chat project and Claude Code on mobile read from that repo's
-GitHub Pages URLs. See [`CLAUDE.md`](CLAUDE.md) in this repo for the
-canonical project context, schema, and load-bearing decisions.
+| Season | State | Runs on | Read |
+|---|---|---|---|
+| NFL 2026 (Yahoo league 206739, team 1) | being built | old-will-macbook, launchd, no AI tokens | `NFL_PLAN.md` |
+| MLB 2026 (ESPN, Captain Phillips) | RETIRED 2026-09-14 | nothing | bottom of this file |
 
-## Files
+## NFL pipeline
+
+Three launchd jobs on the Mac write one SQLite file, `nfl.db`, and a small read-only HTTP
+server on Tailscale port `8094` answers Edwin. Yahoo's API gives league, rosters, scoring
+and actual points; Yahoo's website (login cookie) gives projected points, which the API
+does not expose; nflverse CSVs give schedules and raw stats.
+
+| Job | Fires (ET) | Script |
+|---|---|---|
+| `com.willr.nfl-am` | daily 07:00 | `nfl/am.py`: rosters + projections on game days |
+| `com.willr.nfl-pm` | daily 02:00 | `nfl/pm.py`: actual points + nflverse stats after games |
+| `com.willr.nfl-weekly` | Tue 05:00 | `nfl/weekly.py`: schedules, league meta, player map |
+| `com.willr.nfl-serve` | always | `nfl/serve.py`: `http://100.126.114.42:8094` |
+
+Setup on the Mac (system Python 3.9, no Homebrew):
+
+```bash
+cd ~/fantasy-db
+python3 -m venv venv && ./venv/bin/pip install -r requirements-nfl.txt
+./venv/bin/python -m nfl.db init            # creates nfl.db, idempotent
+cp .secrets/yahoo.json.example .secrets/yahoo.json          # then fill it in
+cp .secrets/yahoo_cookie.txt.example .secrets/yahoo_cookie.txt
+./venv/bin/python -m nfl.yahoo_api auth     # one-time OAuth, stores refresh token
+./venv/bin/python -m nfl.yahoo_api whoami   # prints league 206739 / team 1
+./venv/bin/python -m nfl.weekly             # first fill
+```
+
+Secrets live in `.secrets/` (gitignored) and are typed on the Mac, never pasted in chat.
+Schema, endpoints and the handover checklist are in `NFL_PLAN.md`.
+
+## Syncing your local copy (VS Code)
+
+```bash
+git status                 # check for local edits first
+git stash                  # only if there are uncommitted changes
+git pull origin main
+git stash pop              # only if you stashed; resolve any conflict
+```
+
+Force-match GitHub and discard local edits: `git fetch origin && git reset --hard origin/main`.
+
+---
+
+# RETIRED 2026-09-14: MLB data layer
+
+Kept as the record. Nothing below runs; the atlas timers were disabled on 2026-09-15
+03:16 UTC and the checkout left in place (see `SCOPE_OF_WORK.md`). The published-data
+repo `willrphillips/fantasy-snapshots` is frozen at its last publish.
+
+SQLite-based MLB + ESPN fantasy ingest. Built a daily-snapshot time series
+of every active MLB player (~1110) plus the ESPN league roster + FA pool, with
+L7 / L14 / L30 windows computed by subtraction of season-to-date snapshots.
+`CLAUDE.md` carries the schema and load-bearing decisions in its own retired section.
+
+### Files
 
 | File | Purpose |
 |------|---------|
@@ -24,7 +74,7 @@ canonical project context, schema, and load-bearing decisions.
 | `db_publish.py` | Push fantasy.db + views to GitHub |
 | `health_check.py` | Independent watchdog (freshness, coverage, URL) |
 
-## Initial setup
+### Initial setup
 
 > **Historical.** These steps describe the original 2026-05 bring-up on the
 > iMac "Cocky-Claude". The runtime moved to Hetzner (atlas-cloud) on
@@ -34,7 +84,7 @@ canonical project context, schema, and load-bearing decisions.
 
 ```bash
 # On atlas-cloud, as edwincode
-cd ~/fantasy-bot          # symlink to ~/edwin-repos/fantasy-bot, a real git clone
+cd <atlas checkout>       # a real git clone under ~/edwin-repos
 
 # 1. Install deps into the venv
 ./venv/bin/pip install -r requirements.txt
@@ -48,7 +98,7 @@ git pull
 # 4. ONE-TIME BACKFILL — walks Opening Day to yesterday.
 #    Takes ~30-90 min depending on roster + FA pool size.
 #    Run overnight or in a screen session.
-nohup ./venv/bin/python3 mlb_ingest.py --backfill > ~/fantasy-bot/backfill.log 2>&1 &
+nohup ./venv/bin/python3 mlb_ingest.py --backfill > backfill.log 2>&1 &
 
 # 5. After backfill finishes, generate views + push once to verify
 ./venv/bin/python3 views.py
@@ -57,7 +107,7 @@ nohup ./venv/bin/python3 mlb_ingest.py --backfill > ~/fantasy-bot/backfill.log 2
 # 6. The schedule is already in place (see below)
 ```
 
-## Schedule
+### Schedule
 
 No crontab. Four systemd timers plus three loops inside Edwin's bot.
 
@@ -81,7 +131,7 @@ in `MIGRATION_2026-07-21.md`; do not re-create it.
 `anomaly.py` writes into the same `public/views/` dir, so `db_publish.py`
 (which globs `*.md`) picks it up automatically — no publish change needed.
 
-## Daily flow
+### Daily flow
 
 ```
 3:00 AM  league_snapshot.py runs (existing)            -> snapshot.md
@@ -95,7 +145,7 @@ in `MIGRATION_2026-07-21.md`; do not re-create it.
 every 30m  roster_triage.py                             -> in-game lineup fixes
 ```
 
-## Public URLs
+### Public URLs
 
 After publish, all data is fetchable without auth:
 
@@ -115,7 +165,7 @@ Pre-baked views:
   https://willrphillips.github.io/fantasy-snapshots/views/anomaly_digest.md
 ```
 
-## Claude Code workflow (on the PC, not on atlas-cloud)
+### Claude Code workflow (on the PC, not on atlas-cloud)
 
 ```bash
 git clone https://github.com/willrphillips/fantasy-snapshots
@@ -134,27 +184,7 @@ FANTASY_DB=$(pwd)/data/fantasy.db python3
 `fantasy_lib.py` honors `FANTASY_DB` env var so it works against the downloaded
 copy without modification.
 
-## Syncing your local copy (VS Code)
-
-This code repo is **`willrphillips/fantasy-bot`**. Your local working copy may
-be a folder named **`mlbstats`** — same project, different local name. Confirm
-with `git remote -v` (it should show `fantasy-bot.git`). Edit in VS Code → push;
-work merged on GitHub → pull.
-
-```bash
-git status                 # check for local edits first
-git stash                  # only if there are uncommitted changes (CLAUDE.md often is)
-git pull origin main       # bring down the latest
-git stash pop              # only if you stashed; resolve any conflict
-```
-
-To force-match GitHub and discard local edits:
-`git fetch origin && git reset --hard origin/main`.
-
-The data repo (`willrphillips/fantasy-snapshots`) is separate — `db_publish.py`
-pushes to it; you don't pull it into this repo.
-
-## Manual operations
+### Manual operations
 
 ```bash
 # Force-refresh fantasy state only (skip MLB pull)
@@ -179,7 +209,7 @@ pushes to it; you don't pull it into this repo.
 ./venv/bin/python3 fantasy_lib.py
 ```
 
-## Notes
+### Notes
 
 - **Windows are computed by subtraction**: today's season-to-date row minus
   the row from N days ago. For the first 30 days after backfill, longer
@@ -193,21 +223,21 @@ pushes to it; you don't pull it into this repo.
   file limit for years.
 - **The 100 MB hard limit is per file.** SQLite stays well below this. If
   pull_log or rosters tables grow unexpectedly, VACUUM the file.
-- **Reuses `~/fantasy-bot/config.json`** — same `espn_s2`, `swid`, `github_token`
+- **Reuses `<atlas checkout>/config.json`** — same `espn_s2`, `swid`, `github_token`
   as `league_snapshot.py`. No new credentials needed.
 
-## Troubleshooting
+### Troubleshooting
 
 ```bash
 # Did tonight's pull run?
-tail -50 ~/fantasy-bot/ingest.log
+tail -50 <atlas checkout>/ingest.log
 
 # What did it pull?
-sqlite3 ~/fantasy-bot/fantasy.db \
+sqlite3 <atlas checkout>/fantasy.db \
   "SELECT * FROM pull_log ORDER BY id DESC LIMIT 1"
 
 # How many days of history do I have for Soto?
-sqlite3 ~/fantasy-bot/fantasy.db \
+sqlite3 <atlas checkout>/fantasy.db \
   "SELECT COUNT(DISTINCT date_pulled) FROM hitting_stats \
    WHERE mlb_id = (SELECT mlb_id FROM players WHERE name = 'Juan Soto')"
 

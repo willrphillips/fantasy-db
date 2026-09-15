@@ -1,3 +1,7 @@
+> **RETIRED 2026-09-14.** MLB-season document, kept as the record. Every path, timer,
+> loop and `fantasy-bot` / `mlbstats` name below is historical; nothing here runs. The
+> live project is the NFL pipeline in `NFL_PLAN.md`.
+
 # Captain Phillips Fantasy Baseball — Project Context
 
 This file contains everything Claude needs to help Will manage his fantasy baseball team, debug the snapshot pipeline, query the new data layer, or update the automation. Drop this into the project's knowledge so it loads automatically every conversation.

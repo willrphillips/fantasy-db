@@ -1,3 +1,7 @@
+> **RETIRED 2026-09-14.** MLB-season document, kept as the record. Every path, timer,
+> loop and `fantasy-bot` / `mlbstats` name below is historical; nothing here runs. The
+> live project is the NFL pipeline in `NFL_PLAN.md`.
+
 # Captain Phillips — Fantasy Operating Runbook
 
 Operating procedure for Claude when handling Captain Phillips fantasy-baseball
