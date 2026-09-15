@@ -36,3 +36,12 @@ applied_log.jsonl
 *.tmp.*
 .flowstatus.json
 cache/
+
+# NFL pipeline (2026-09-14)
+.secrets/*
+!.secrets/*.example
+!.secrets/README.md
+nfl.db
+nfl.db-journal
+nfl.db-wal
+nfl.db-shm
