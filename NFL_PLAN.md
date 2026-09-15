@@ -1,5 +1,11 @@
 # NFL_PLAN — fantasy-db, NFL season (drafted 2026-09-14 by the C:\Code manager seat)
 
+> **Amended 2026-09-15.** Shipped; see `SCOPE_OF_WORK.md` 2026-09-15. One fixed fact
+> below is wrong: the Yahoo Fantasy API is gated behind an approval queue, so the whole
+> Yahoo read path is the website with the login cookie (`nfl/yahoo_web.py`), and player
+> keys are `p.<yahoo_id>`, team keys `t.N`, league key `l.206739`. `yahoo_api.py` is
+> retired on disk pending Will's application. The rest of this file stands as written.
+
 Read with `SCOPE_OF_WORK.md` entry 2026-09-14. This is the handover spec. Sections fill in
 as each step is decided with Will. Nothing here runs on atlas; MLB is retired there.
 

@@ -1,37 +1,58 @@
 # SCOPE_OF_WORK
 
-Dated status log for the fantasy-bot data pipeline (the iMac MLB
-ingest + publish system). The pre-existing `espn_nightly_moves`,
-`league_snapshot`, and `espn_weekly_report` jobs are out of scope.
+Dated status log for fantasy-db. Newest entry first.
 
-> **STATUS: COMPLETE & LIVE (2026-06-05).** Nightly cron runs
-> ingest → views → anomaly digest → publish → health check on the iMac;
-> `fantasy.db` + 8 markdown views publish to GitHub Pages each morning
-> and return 200. All known data-correctness defects are fixed and
-> verified against live ESPN (see entries below).
-> Future changes must respect the locked decisions recorded here and in
-> `CLAUDE.md`.
->
-> ⚠️ **OPEN WORK ITEM (2026-06-10): ESPN write tooling is UNVALIDATED.**
-> The roster-automation layer (`set_lineup.py`, `waiver_move.py`,
-> `apply_pending.py`, plus `espn_utils.apply_lineup_moves` /
-> `waiver_move`) is written and merged but has **never run against the
-> live ESPN API** — this session's environment couldn't reach ESPN. It
-> must be dry-run-validated, then `--apply`-tested once, on the iMac
-> before any automation is trusted. See the 2026-06-10 entry below.
->
-> 📋 **DESIGN LOCKED, BUILD DEFERRED (2026-07-20): daily auto-lineup +
-> waiver-scan-to-Edwin.** Three decisions captured in the 2026-07-20 entry
-> below; no code written yet (Will out of usage). The build depends on the
-> write path above being validated first.
->
-> 🧹 **QUEUED CLEANUP (2026-07-21, deferred until after usage resets):**
-> remove the now-dead email alerting path — `send_email()` in
-> `espn_utils.py`, and `gmail_address` / `gmail_app_password` /
-> `smtp_host` / `smtp_port` / `recipient_email` from the iMac's
-> `config.json`. Discord has fully replaced it for baseball (see the
-> 2026-07-21 entry below); these are unused, not broken. Don't touch
-> until asked.
+> **STATUS (2026-09-15): NFL pipeline LIVE on old-will-macbook.** Three launchd jobs and
+> the read API on `100.126.114.42:8094` shipped and verified; see the 2026-09-15 entry.
+> The MLB pipeline is RETIRED (2026-09-14 entry); everything below that entry is the MLB
+> record and nothing in it runs.
+
+## 2026-09-15 — NFL pipeline shipped on old-will-macbook (tasks 1 to 11 of NFL_PLAN.md)
+
+**One decision reversed by fact.** NFL_PLAN.md assumed the Yahoo Fantasy Sports API with
+Will's dev app. Yahoo gated that API behind an approval queue in 2026
+(sports.yahoo.com/developer/access); the OAuth exchange worked, every resource answered
+`401 additional_authorization_required`, and approved access is read-only anyway. Will
+chose option A: scrape the website with his login cookie for everything, apply for the
+API in parallel (he submitted the application himself). `yahoo_api.py` stays on disk,
+retired; `yahoo_web.py` is the whole Yahoo read path.
+
+**Two rules relaxed by Will, in writing, this session.** He pasted the Yahoo client
+id/secret and the browser cookie into chat rather than typing them on the Mac ("I really
+don't care about it being in chat here"). They were written to `.secrets/` on the Mac,
+chmod 600, gitignored; the transcript on the PC holds them too.
+
+**What runs, all on the Mac, nothing on atlas, zero AI tokens:**
+
+| LaunchAgent | Fires | What it did on first run (2026-09-15) |
+|---|---|---|
+| `com.willr.nfl-weekly` | Tue 05:00 | 272 games, 8 teams, league settings, 387 players (345 mapped to gsis_id) |
+| `com.willr.nfl-am` | daily 07:00, game days | week 2: 122 roster rows, 382 projections |
+| `com.willr.nfl-pm` | daily 02:00, after games | week 1: 382 actuals (is_final=1), 1118 nflverse stat rows |
+| `com.willr.nfl-serve` | always | `/health` 200 and `/status` 200 with key, from the PC |
+
+Keys: `l.206739` (league), `t.N` (team), `p.<yahoo_id>` (player). The API game-key prefix
+in the plan (`461.p.`) is not on the website and is not used.
+
+**Sources.** Standings page (teams, current week), settings page (scoring, roster slots),
+one team page per week (slot, bye, actual, projected), players list with `stat1=S_PW_N`
+(projected) or `S_W_N` (actual) to 300 offense / 50 K / 32 DEF deep, nflverse CSVs for
+schedules, weekly stats and the yahoo_id to gsis_id map. `yhtml.py` is a depth-aware
+table parser because Yahoo nests weather tables inside player cells.
+
+**Known edges.**
+- A dead cookie fails the whole am/pm run: `runs.ok=0`, `error='cookie'`. Refresh by
+  re-pasting the browser `Cookie:` header into `.secrets/yahoo_cookie.txt`. No alert
+  fires; `/status` shows it.
+- 10 kickers have no gsis_id (not on nflverse rosters). Listed in `runs.error` of the
+  weekly row, ok=1.
+- `stats.snaps` is NULL; nflverse keeps snap counts in a separate file keyed by pfr id.
+- Week-1 rosters were pulled retrospectively on 2026-09-15 and show the week-1 lineup as
+  Yahoo renders it now.
+- The PC's clock was about 10 hours behind Yahoo's `Date:` header during this session; the
+  Mac's clock matched Yahoo. Timestamps in this session's chat are wrong, the Mac's are not.
+- Edwin's side (tool `nfl`, key in `~/.nfl-key` on atlas, remove MLB loops) is the next
+  handover and is not started.
 
 ## 2026-09-14 — MLB pipeline retired on atlas; project pivots to NFL on old-will-macbook
 

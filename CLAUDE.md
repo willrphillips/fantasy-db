@@ -7,13 +7,13 @@ Read this first. Repo is **`willrphillips/fantasy-db`** on GitHub; the local fol
 
 | Season | State | Where it runs | Spec |
 |---|---|---|---|
-| NFL 2026 | **being built** | old-will-macbook (Tailscale `100.126.114.42`), launchd, zero AI tokens | `NFL_PLAN.md` |
+| NFL 2026 | **LIVE since 2026-09-15** | old-will-macbook (Tailscale `100.126.114.42`), launchd, zero AI tokens | `NFL_PLAN.md` |
 | MLB 2026 | **RETIRED 2026-09-14** | nothing runs; atlas checkout kept, timers disabled | section at the bottom of this file |
 
 `NFL_PLAN.md` is the spec for the NFL work: fixed facts, schema, the three launchd jobs, the
 Edwin read path on `:8094`, and the 11-task handover checklist. Decisions there are made; do
 not reopen them. `SCOPE_OF_WORK.md` is the dated decision log; `BACKLOG.md` opens with a
-START HERE block once task 11 lands.
+START HERE block.
 
 ## Operating preferences (how to respond)
 
@@ -36,12 +36,13 @@ These apply to every session, both Claude Code and Claude Chat.
 | Path | What |
 |---|---|
 | `nfl/db.py` | schema + `python -m nfl.db init` (idempotent) |
-| `nfl/yahoo_api.py` | OAuth2 refresh flow; league, rosters, scoring, actual points |
-| `nfl/yahoo_web.py` | login cookie; projected points only (the API has none) |
+| `nfl/yahoo_web.py` | login cookie; the whole Yahoo read path: teams, settings, rosters, projected and actual points |
+| `nfl/yhtml.py` | depth-aware HTML table parser (Yahoo nests tables inside cells) |
+| `nfl/yahoo_api.py` | RETIRED: OAuth2 client for the gated Fantasy API, kept for the day the application is approved |
 | `nfl/nflverse.py` | schedules, player_stats, rosters CSVs |
 | `nfl/am.py` / `nfl/pm.py` / `nfl/weekly.py` | the three launchd jobs |
 | `nfl/serve.py` | read-only HTTP on `100.126.114.42:8094` for Edwin |
-| `.secrets/` | gitignored; `yahoo.json`, `yahoo_cookie.txt`, `serve-key`. Will types values on the Mac, never in chat. |
+| `.secrets/` | gitignored; `yahoo_cookie.txt` (the live secret), `serve-key`, `yahoo.json` (retired API creds). Real files live only on the Mac. |
 | `nfl.db` | gitignored; lives on the Mac |
 
 Rules that bind every NFL script: every run writes a `runs` row (crash included);
