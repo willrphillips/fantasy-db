@@ -49,8 +49,10 @@ table parser because Yahoo nests weather tables inside player cells.
 - `stats.snaps` is NULL; nflverse keeps snap counts in a separate file keyed by pfr id.
 - Week-1 rosters were pulled retrospectively on 2026-09-15 and show the week-1 lineup as
   Yahoo renders it now.
-- The PC's clock was about 10 hours behind Yahoo's `Date:` header during this session; the
-  Mac's clock matched Yahoo. Timestamps in this session's chat are wrong, the Mac's are not.
+- Clocks are fine. PC, Mac and an HTTP `Date:` header agreed to within 2 seconds at
+  14:28 UTC 2026-09-15. The worker session had earlier claimed the PC was hours slow; that
+  was elapsed wall time across a long pause in the session, not clock drift. Launchd on
+  the Mac runs in ET and the Mac matched Yahoo throughout.
 - Edwin's side (tool `nfl`, key in `~/.nfl-key` on atlas, remove MLB loops) is the next
   handover and is not started.
 
