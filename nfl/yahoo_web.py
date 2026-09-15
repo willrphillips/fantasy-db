@@ -174,7 +174,11 @@ class YahooWeb:
             for row in t["rows"]:
                 if row[0].tag != "td" or len(row) <= hi["Proj Pts"]:
                     continue
-                p = parse_player_cell(row[1])
+                p = {}
+                for c in row[:4]:  # the current week adds an "Edit" column before the player
+                    p = parse_player_cell(c)
+                    if p:
+                        break
                 if not p:
                     continue  # empty slot
                 bye = _float(row[hi["Bye"]].text)
