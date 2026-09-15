@@ -1,4 +1,11 @@
-"""Yahoo Fantasy Sports API: OAuth2 refresh flow plus league, teams, rosters, scoring,
+"""RETIRED 2026-09-15, kept for the day Yahoo approves the API application.
+
+Yahoo gated the Fantasy Sports API behind an approval queue in 2026
+(sports.yahoo.com/developer/access). The OAuth flow below works (token exchange
+succeeded 2026-09-15) but every resource answers 401 additional_authorization_required
+until the app is approved. The live read path is yahoo_web.py. Nothing imports this.
+
+Yahoo Fantasy Sports API: OAuth2 refresh flow plus league, teams, rosters, scoring,
 actual points. Projected points are NOT here; the API has no such resource. See yahoo_web.
 
 Secrets: `.secrets/yahoo.json`

@@ -1,5 +1,6 @@
-"""Tuesday 05:00 job: nflverse schedules + rosters, Yahoo league meta/scoring/teams,
-`players` map refresh. Unresolved-name report goes into `runs.error` with ok=1.
+"""Tuesday 05:00 job: nflverse schedules + rosters, Yahoo league meta/scoring/teams
+(from the website), `players` map refresh. Unresolved-name report goes into `runs.error`
+with ok=1.
 
     python -m nfl.weekly [--season 2026]
 """
@@ -8,44 +9,52 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime
 
 from . import nflverse, players
-from .common import Run, log, now_utc, retry
+from .common import ET, LEAGUE_ID, Run, WILL_TEAM_ID, log, now_utc, retry
 from .db import init
-from .yahoo_api import Yahoo
+from .yahoo_web import YahooWeb
+
+LEAGUE_KEY = f"l.{LEAGUE_ID}"
+
+
+def team_key(team_id: int) -> str:
+    return f"t.{int(team_id)}"
 
 
 def run(season: int = None) -> int:
     conn = init()
     with Run(conn, "weekly") as r:
-        y = Yahoo()
-        lg = retry(y.league, what="yahoo league")
-        season = season or lg["season"]
+        season = season or datetime.now(ET).year
+        y = YahooWeb()
 
         games = retry(nflverse.schedules, season, what="nflverse schedules")
         r.rows += nflverse.upsert_games(conn, games)
 
-        st = retry(y.settings, what="yahoo settings")
+        st = retry(y.standings, what="yahoo standings")
+        cfg = retry(y.settings, what="yahoo settings")
         conn.execute(
             "INSERT OR REPLACE INTO league (league_key, season, name, scoring_json, roster_slots_json, pulled_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (lg["league_key"], lg["season"], lg["name"], json.dumps(st["scoring"]),
-             json.dumps(st["roster_slots"]), now_utc()))
-        teams = retry(y.teams, what="yahoo teams")
+            (LEAGUE_KEY, season, cfg["name"], json.dumps(cfg["scoring"]),
+             json.dumps(cfg["roster_slots"]), now_utc()))
         conn.executemany(
             "INSERT OR REPLACE INTO league_teams (team_key, league_key, team_id, team_name, manager, is_will) "
-            "VALUES (:team_key, :league_key, :team_id, :team_name, :manager, :is_will)", teams)
+            "VALUES (?, ?, ?, ?, NULL, ?)",
+            [(team_key(t["team_id"]), LEAGUE_KEY, t["team_id"], t["team_name"],
+              1 if t["team_id"] == WILL_TEAM_ID else 0) for t in st["teams"]])
         conn.commit()
-        r.rows += 1 + len(teams)
+        r.rows += 1 + len(st["teams"])
+        week = st["current_week"] or 1
+        log.info("league %r: %d teams, current week %s", cfg["name"], len(st["teams"]), week)
 
-        # every rostered player in the league, so the map covers what Edwin will ask about
-        week = max(lg["current_week"], 1)
+        # every rostered player plus the projected pool, so the map covers what Edwin asks about
         seen = {}
-        for t in teams:
-            for p in retry(y.roster, t["team_key"], week, what=f"yahoo roster {t['team_id']}"):
+        for t in st["teams"]:
+            for p in retry(y.roster, t["team_id"], week, what=f"yahoo roster {t['team_id']}"):
                 seen[p["player_key"]] = p
-        # plus the top free agents, so waiver questions resolve too
-        for p in retry(y.free_agents, count=100, what="yahoo free agents"):
+        for p in retry(y.players, week, "proj", what="yahoo players").values():
             seen.setdefault(p["player_key"], p)
         r.rows += players.upsert_yahoo(conn, list(seen.values()))
 
