@@ -1,3 +1,7 @@
+> **RETIRED 2026-09-14.** MLB-season document, kept as the record. Every path, timer,
+> loop and `fantasy-bot` / `mlbstats` name below is historical; nothing here runs. The
+> live project is the NFL pipeline in `NFL_PLAN.md`.
+
 # MIGRATION 2026-07-21 — iMac → Hetzner (atlas-cloud), Edwin takes ownership
 
 **Read this before trusting any other doc in this repo.** As of 2026-07-21 the runtime
