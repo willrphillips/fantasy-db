@@ -8,7 +8,8 @@ Only client_id and client_secret are typed by hand; `auth` fills the rest.
 
 One-time authorize, on the Mac:
     python -m nfl.yahoo_api auth          # prints the URL to open in a browser
-    ...log in, Yahoo shows a short code, write it to .secrets/yahoo_code.txt...
+    ...log in, Agree; the browser lands on the redirect URI with ?code=... in the address
+       bar and cannot connect. Paste that whole URL into .secrets/yahoo_code.txt...
     python -m nfl.yahoo_api auth          # reads the code, stores the refresh token
     python -m nfl.yahoo_api whoami        # league 206739 / team 1 check
 
@@ -20,6 +21,7 @@ from __future__ import annotations
 import sys
 import time
 import xml.etree.ElementTree as ET_
+from urllib.parse import parse_qs, quote, urlparse
 
 import requests
 
@@ -29,6 +31,9 @@ AUTH_URL = "https://api.login.yahoo.com/oauth2/request_auth"
 TOKEN_URL = "https://api.login.yahoo.com/oauth2/get_token"
 API = "https://fantasysports.yahooapis.com/fantasy/v2"
 SECRET_FILE = "yahoo.json"
+# Yahoo dropped `oob` for newer apps; the app registers a real redirect URI and the code
+# comes back in the browser address bar (localhost refuses the connection, which is fine).
+REDIRECT_URI = "https://localhost:8080"
 CODE_FILE = SECRETS / "yahoo_code.txt"
 CHUNK = 25  # max player_keys per request
 
@@ -45,7 +50,7 @@ class Yahoo:
 
     def _token_request(self, **form) -> dict:
         form.update(client_id=self.sec["client_id"], client_secret=self.sec["client_secret"],
-                    redirect_uri="oob")
+                    redirect_uri=self.sec.get("redirect_uri", REDIRECT_URI))
         r = self.s.post(TOKEN_URL, data=form, timeout=30)
         if r.status_code != 200:
             raise RuntimeError(f"yahoo token {form.get('grant_type')}: {r.status_code} {r.text[:300]}")
@@ -57,7 +62,8 @@ class Yahoo:
         return tok
 
     def authorize_url(self) -> str:
-        return (f"{AUTH_URL}?client_id={self.sec['client_id']}&redirect_uri=oob"
+        ru = quote(self.sec.get("redirect_uri", REDIRECT_URI), safe="")
+        return (f"{AUTH_URL}?client_id={self.sec['client_id']}&redirect_uri={ru}"
                 f"&response_type=code&language=en-us")
 
     def exchange_code(self, code: str) -> None:
@@ -206,6 +212,8 @@ def cmd_auth() -> int:
     y = Yahoo()
     if CODE_FILE.exists():
         code = CODE_FILE.read_text(encoding="utf-8").strip()
+        if code.startswith("http"):  # the whole redirected URL was pasted; pull the code out
+            code = parse_qs(urlparse(code).query).get("code", [code])[0]
         y.exchange_code(code)
         CODE_FILE.unlink()
         print("refresh token stored; run `python -m nfl.yahoo_api whoami`")
@@ -215,7 +223,8 @@ def cmd_auth() -> int:
         return 0
     print("1. Open this URL in a browser, log in as Will, click Agree:\n")
     print("   " + y.authorize_url() + "\n")
-    print(f"2. Yahoo shows a short code. Write it to {CODE_FILE}")
+    print(f"2. The browser lands on {REDIRECT_URI}/?code=... and fails to connect.")
+    print(f"   Copy that whole address bar URL into {CODE_FILE}")
     print("3. Run `python -m nfl.yahoo_api auth` again.")
     return 0
 
