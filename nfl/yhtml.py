@@ -121,8 +121,13 @@ def header_index(rows: list, *labels: str) -> dict:
     for row in rows:
         if not row or row[0].tag != "th":
             continue
-        for i, c in enumerate(row):
+        col = 0  # data-column position; a colspan header (Yahoo's "Action") covers 2 cells
+        for c in row:
             for lab in labels:
                 if lab not in out and c.text.lower().startswith(lab.lower()):
-                    out[lab] = i
+                    out[lab] = col
+            try:
+                col += max(1, int(c.attrs.get("colspan") or 1))
+            except ValueError:
+                col += 1
     return out
