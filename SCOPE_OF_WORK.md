@@ -33,6 +33,24 @@ ingest + publish system). The pre-existing `espn_nightly_moves`,
 > 2026-07-21 entry below); these are unused, not broken. Don't touch
 > until asked.
 
+## 2026-09-14 — MLB pipeline retired on atlas; project pivots to NFL on old-will-macbook
+
+Will's decision (manager session at C:\Code, 2026-09-14): stop the MLB fantasy work on
+atlas now rather than waiting for the 2026-09-30 timer, and do not move it anywhere. The
+next season of this project is an NFL fantasy database that runs on old-will-macbook
+(Tailscale 100.126.114.42) as pure cron, no AI tokens: Yahoo expected points pulled the
+morning of each game, live NFL stats plus actual fantasy points added that night, and a
+read path Edwin can query instead of hitting live APIs. The local folder is to be renamed
+to match the GitHub repo name.
+
+What was done on atlas, as root, 2026-09-15 03:16 UTC: ran the pre-written
+`/usr/local/sbin/fantasy-shutdown.sh`. Verified afterwards: `systemctl list-timers` shows
+no fantasy timers; ingest/views/anomaly/health/publish/shutdown all `disabled`; the
+`~edwincode/fantasy-bot` symlink is gone (retires the publish/advisor/triage loops in
+Edwin's bot.py); no fantasy processes running; Discord notice posted. Nothing deleted:
+the checkout, `fantasy.db` and views are still in `/home/edwincode/edwin-repos/fantasy-bot`.
+Reversal: `sudo /usr/local/sbin/fantasy-restore.sh` on atlas.
+
 ## 2026-08-30 — write path hardened, and the iMac-era docs finally rewritten
 
 Closing out the same night's work.
