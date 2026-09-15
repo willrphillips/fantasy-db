@@ -63,6 +63,18 @@ def run(force: bool = False, week: int = None) -> int:
         conn.commit()
         r.rows += len(rows)
         log.info("actuals: %d rows", len(rows))
+        if is_final:
+            # the act list is sorted by points and cut at DEPTH, so players who scored nothing
+            # fall off the end. Once the week is final, no row means 0, and Yahoo counts it as 0.
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO actuals (season, week, player_key, act_pts, pulled_at, is_final) "
+                "SELECT ?, ?, player_key, 0.0, ?, 1 FROM ("
+                "  SELECT player_key FROM projections WHERE season=? AND week=? "
+                "  UNION SELECT player_key FROM rosters WHERE season=? AND week=?)",
+                (season, week, now_utc(), season, week, season, week))
+            conn.execute("UPDATE actuals SET is_final=1 WHERE season=? AND week=?", (season, week))
+            conn.commit()
+            log.info("actuals: %d zero-filled for the final week", cur.rowcount)
 
         stats = retry(nflverse.player_stats, season, week, what="nflverse player_stats")
         r.rows += nflverse.upsert_stats(conn, stats)

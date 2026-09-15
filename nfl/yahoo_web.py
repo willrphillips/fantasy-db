@@ -35,7 +35,7 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 PAGE = 25
 # players-list depth per position group: rostered players in an 8-team league plus a
 # free-agent tail deep enough for waiver questions
-DEPTH = {"O": 300, "K": 32, "DEF": 32}
+DEPTH = {"O": 400, "K": 40, "DEF": 32}
 PAUSE_S = 1.0  # between page fetches; be a polite browser
 
 _pid = re.compile(r'data-ys-playerid="(\d+)"')
