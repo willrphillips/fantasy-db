@@ -1,4 +1,4 @@
-# fantasy-db — Claude project notes
+# fantasy-db: Claude project notes
 
 Read this first. Repo is **`willrphillips/fantasy-db`** on GitHub; the local folder is
 `C:\Code\fantasy-db` on the PC and `~/fantasy-db` on old-will-macbook. One name everywhere.
@@ -139,8 +139,8 @@ fantasy league; you can query any active MLB player.
 | Table | What it holds |
 |---|---|
 | `players` | bio per player (`mlb_id` PK, `name`, `team`, `primary_pos`, `last_tracked`) |
-| `hitting_stats` | one row per (player, date) — **season-to-date** as of that date |
-| `pitching_stats` | one row per (player, date) — **season-to-date** as of that date |
+| `hitting_stats` | one row per (player, date), **season-to-date** as of that date |
+| `pitching_stats` | one row per (player, date), **season-to-date** as of that date |
 | `statcast` | season-to-date Statcast snapshot per (player, date, side) |
 | `rosters` | snapshot of every ESPN team's roster, one row per (date, team, player) |
 | `standings` | one row per (date, team) |
@@ -151,7 +151,7 @@ fantasy league; you can query any active MLB player.
 
 **Critical:** `hitting_stats` and `pitching_stats` are
 **cumulative**, not per-game. To get a window (L7, L14, L30, custom),
-**subtract two snapshots** — today's row minus the row N days ago.
+**subtract two snapshots**: today's row minus the row N days ago.
 `fantasy_lib.window_stats(name, days=14)` does this for you.
 
 `statcast` is current-snapshot only. Savant doesn't expose historical
@@ -184,7 +184,7 @@ health()                                     # freshness + row counts
 `fantasy_lib` honors the `FANTASY_DB` env var so the same code works on
 atlas-cloud (live db) or on any machine with a downloaded copy.
 
-### Three defects fixed (load-bearing — don't undo)
+### Three defects fixed (load-bearing, don't undo)
 
 These were latent in the original chat-built code and were corrected on
 2026-05-19. Any future change that touches the same areas must respect
@@ -246,7 +246,7 @@ the constraints below.
   ESPN's `result` field.** espn_api box scores are `{CAT: {"value":
   float, "result": "WIN"|"LOSS"|"TIE"|None}}`. `fetch_fantasy_state`
   reads `value`, sets `leader` from the home `result` (so lower-is-
-  better cats ERA/WHIP are correct — never re-derive `leader` from a raw
+  better cats ERA/WHIP are correct; never re-derive `leader` from a raw
   value comparison), and **skips component stats** (AB/H/OUTS/ER/P_H/
   P_BB, `result=None`) so only the 11 scored cats persist. `standings`
   rank is pinned to ESPN's `team.standing`; `pct = (wins+0.5*ties)/gp`.
@@ -281,7 +281,7 @@ Views:
 | `mlb_ingest.py` | Daily + backfill ingest. Modes: `--backfill`, `--only-fantasy`, `--player NAME`, `--limit N`. |
 | `fantasy_lib.py` | Query helper. Honors `FANTASY_DB` env var. |
 | `views.py` | Generate the seven core markdown reports. |
-| `anomaly.py` | Build `anomaly_digest.md` — standout single-game lines vs season baseline. Daily delta via 1-day snapshot subtraction (INNER JOIN to prior snapshot, never COALESCE-to-zero). Writes into the views dir; `db_publish` globs it. |
+| `anomaly.py` | Build `anomaly_digest.md`: standout single-game lines vs season baseline. Daily delta via 1-day snapshot subtraction (INNER JOIN to prior snapshot, never COALESCE-to-zero). Writes into the views dir; `db_publish` globs it. |
 | `db_publish.py` | Push fantasy.db + views to GitHub via Contents API. |
 | `health_check.py` | Independent watchdog. Reads only; alerts on freshness, coverage, errors, URL reachability. |
 | `notify.py` | `alert(script, subject, body)`. Failure-only, throttled. |
@@ -302,7 +302,7 @@ Views:
    roster triage.
 2. `pull_log` table has structured counts per run. The most recent row
    tells you what happened last night.
-3. `health_check.py` is the canonical "is everything OK" command —
+3. `health_check.py` is the canonical "is everything OK" command:
    prints `OK: health check passed (DATE)` and exit 0 when green.
 4. If you've changed the schema, drop the db (`rm fantasy.db`),
    re-init (`python3 db_init.py`), and re-run a backfill. The
