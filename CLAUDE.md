@@ -1,10 +1,14 @@
+Global rules: ~/.claude/AI_CHARTER.md and ~/.claude/CLAUDE.md bind here; ~/.claude/HANDBOOK.md holds the lessons.
+Company handbook (who we are, how we build, brand index, Will's voice):
+  C:\Users\willr\Sky Zone Phillips Dropbox\Will Phillips\1Personal Files\Codex\infra\COMPANY_HANDBOOK.md
+Brand for this project: Will's own tools
+Read SCOPE_OF_WORK.md (locked decisions) and BACKLOG.md (START HERE) before changing anything.
+This file holds project specifics only.
+
 # fantasy-db: Claude project notes
 
 Read this first. Repo is **`willrphillips/fantasy-db`** on GitHub; the local folder is
 `C:\Code\fantasy-db` on the PC and `~/fantasy-db` on old-will-macbook. One name everywhere.
-
-Global rules: ~/.claude/CLAUDE.md and ~/.claude/AI_CHARTER.md bind here; this file holds
-project specifics only.
 
 ## Status (2026-10-20)
 
