@@ -7,6 +7,22 @@ Dated status log for fantasy-db. Newest entry first.
 > The MLB pipeline is RETIRED (2026-09-14 entry); everything below that entry is the MLB
 > record and nothing in it runs.
 
+## 2026-11-23: a dead Yahoo cookie no longer stops the nflverse steps
+
+The cookie died around 2026-10-30 (first `cookie dead` run 2026-11-02 07:00Z). `pm` crashed
+at the Yahoo step, so nflverse stats stopped loading too. Decided and shipped:
+
+- **Step order and isolation.** `pm` and `weekly` run every nflverse step first, then the
+  Yahoo step inside its own try. A dead cookie fails only that step. `am` is all Yahoo.
+- **Loud, not silent.** A cookie failure ends the run `ok=0`, exit 1, `runs.error` starting
+  `cookie dead` with the week it missed and the re-run command. `/status` carries a
+  `yahoo_cookie` block (`state`, `dead_since`, `fix`) so it is the first thing read.
+  Still no Discord from the pipeline (plan rule).
+- **No retry on a dead cookie.** `CookieDead.fatal`; `common.retry` raises it at once
+  instead of burning three 5-minute waits.
+- **`pm --force` without `--week`** takes the week from the nflverse schedule, not Yahoo.
+- **`pm --skip-yahoo`** for nflverse-only backfills.
+
 ## 2026-09-15 — NFL pipeline shipped on old-will-macbook (tasks 1 to 11 of NFL_PLAN.md)
 
 **One decision reversed by fact.** NFL_PLAN.md assumed the Yahoo Fantasy Sports API with

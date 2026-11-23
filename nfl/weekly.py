@@ -1,6 +1,7 @@
 """Tuesday 05:00 job: nflverse schedules + rosters, Yahoo league meta/scoring/teams
 (from the website), `players` map refresh. Unresolved-name report goes into `runs.error`
-with ok=1.
+with ok=1. The nflverse steps run first and never touch Yahoo; a dead cookie fails only
+the Yahoo step (ok=0, runs.error starting 'cookie dead').
 
     python -m nfl.weekly [--season 2026]
 """
@@ -14,7 +15,7 @@ from datetime import datetime
 from . import nflverse, players
 from .common import ET, LEAGUE_ID, Run, WILL_TEAM_ID, log, now_utc, retry
 from .db import init
-from .yahoo_web import YahooWeb
+from .yahoo_web import COOKIE_ERROR, CookieDead, YahooWeb
 
 LEAGUE_KEY = f"l.{LEAGUE_ID}"
 
@@ -23,47 +24,59 @@ def team_key(team_id: int) -> str:
     return f"t.{int(team_id)}"
 
 
+def yahoo_league(conn, r, season: int) -> None:
+    """League meta, scoring, teams, and every rostered + projected player into `players`."""
+    y = YahooWeb()
+    st = retry(y.standings, what="yahoo standings")
+    cfg = retry(y.settings, what="yahoo settings")
+    conn.execute(
+        "INSERT OR REPLACE INTO league (league_key, season, name, scoring_json, roster_slots_json, pulled_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (LEAGUE_KEY, season, cfg["name"], json.dumps(cfg["scoring"]),
+         json.dumps(cfg["roster_slots"]), now_utc()))
+    conn.executemany(
+        "INSERT OR REPLACE INTO league_teams (team_key, league_key, team_id, team_name, manager, is_will) "
+        "VALUES (?, ?, ?, ?, NULL, ?)",
+        [(team_key(t["team_id"]), LEAGUE_KEY, t["team_id"], t["team_name"],
+          1 if t["team_id"] == WILL_TEAM_ID else 0) for t in st["teams"]])
+    conn.commit()
+    r.rows += 1 + len(st["teams"])
+    week = st["current_week"] or 1
+    log.info("league %r: %d teams, current week %s", cfg["name"], len(st["teams"]), week)
+
+    # every rostered player plus the projected pool, so the map covers what Edwin asks about
+    seen = {}
+    for t in st["teams"]:
+        for p in retry(y.roster, t["team_id"], week, what=f"yahoo roster {t['team_id']}"):
+            seen[p["player_key"]] = p
+    for p in retry(y.players, week, "proj", what="yahoo players").values():
+        seen.setdefault(p["player_key"], p)
+    r.rows += players.upsert_yahoo(conn, list(seen.values()))
+
+
 def run(season: int = None) -> int:
     conn = init()
     with Run(conn, "weekly") as r:
         season = season or datetime.now(ET).year
-        y = YahooWeb()
 
+        # nflverse first: schedule and rosters need no cookie
         games = retry(nflverse.schedules, season, what="nflverse schedules")
         r.rows += nflverse.upsert_games(conn, games)
-
-        st = retry(y.standings, what="yahoo standings")
-        cfg = retry(y.settings, what="yahoo settings")
-        conn.execute(
-            "INSERT OR REPLACE INTO league (league_key, season, name, scoring_json, roster_slots_json, pulled_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (LEAGUE_KEY, season, cfg["name"], json.dumps(cfg["scoring"]),
-             json.dumps(cfg["roster_slots"]), now_utc()))
-        conn.executemany(
-            "INSERT OR REPLACE INTO league_teams (team_key, league_key, team_id, team_name, manager, is_will) "
-            "VALUES (?, ?, ?, ?, NULL, ?)",
-            [(team_key(t["team_id"]), LEAGUE_KEY, t["team_id"], t["team_name"],
-              1 if t["team_id"] == WILL_TEAM_ID else 0) for t in st["teams"]])
-        conn.commit()
-        r.rows += 1 + len(st["teams"])
-        week = st["current_week"] or 1
-        log.info("league %r: %d teams, current week %s", cfg["name"], len(st["teams"]), week)
-
-        # every rostered player plus the projected pool, so the map covers what Edwin asks about
-        seen = {}
-        for t in st["teams"]:
-            for p in retry(y.roster, t["team_id"], week, what=f"yahoo roster {t['team_id']}"):
-                seen[p["player_key"]] = p
-        for p in retry(y.players, week, "proj", what="yahoo players").values():
-            seen.setdefault(p["player_key"], p)
-        r.rows += players.upsert_yahoo(conn, list(seen.values()))
-
         nfl_ro = retry(nflverse.rosters, season, what="nflverse rosters")
+
+        try:
+            yahoo_league(conn, r, season)
+        except CookieDead as e:
+            r.fail(f"{COOKIE_ERROR}: Yahoo league, teams and players map NOT refreshed ({e})")
+        except Exception as e:  # noqa: BLE001
+            r.fail(f"yahoo league refresh failed: {type(e).__name__}: {e}")
+
+        # runs on whatever players the db already holds when Yahoo was skipped
         m = players.map_gsis(conn, nfl_ro)
         log.info("players map: %d by yahoo_id, %d by name, %d unresolved",
                  m["by_yahoo_id"], m["by_name"], len(m["unresolved"]))
         if m["unresolved"]:
-            r.error = "unresolved gsis_id: " + "; ".join(m["unresolved"])[:4000]
+            r.note(("unresolved gsis_id: " + "; ".join(m["unresolved"]))[:4000])
     return 0 if r.ok else 1
 
 

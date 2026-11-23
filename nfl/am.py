@@ -4,8 +4,8 @@ the week and projected points for every rostered + listed player. Else exit 0.
     python -m nfl.am [--force] [--week N]
 
 Rosters come from the eight team pages (slot + proj), the free-agent pool from the
-players list. A dead cookie fails the whole run (ok=0, error='cookie'); there is no
-partial source any more.
+players list. Every step is Yahoo, so a dead cookie fails the whole run: ok=0, exit 1,
+runs.error starting 'cookie dead'.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from . import players
 from .common import ET, Run, log, now_utc, retry, today_et, utc_to_et_date
 from .db import init
 from .weekly import team_key
-from .yahoo_web import CookieDead, YahooWeb
+from .yahoo_web import COOKIE_ERROR, CookieDead, YahooWeb
 
 
 def games_today(conn, season: int):
@@ -64,8 +64,8 @@ def run(force: bool = False, week: int = None) -> int:
                 if p["pts"] is not None:
                     proj.setdefault(p["player_key"], p["pts"])
         except CookieDead as e:
-            r.error = "cookie"
-            raise RuntimeError(str(e))
+            r.fail(f"{COOKIE_ERROR}: rosters and projections for week {week} NOT loaded ({e})")
+            return 1
 
         players.upsert_yahoo(conn, list(seen.values()))
         conn.execute("DELETE FROM rosters WHERE season=? AND week=?", (season, week))

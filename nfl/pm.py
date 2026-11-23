@@ -1,9 +1,12 @@
 """Daily 02:00 job. If a game finished yesterday: refresh `games` scores from nflverse,
-pull actual points for the week from the Yahoo players list (S_W_N), pull nflverse
-player_stats for the week. Mark `actuals.is_final=1` once every game in the week is
+pull nflverse player_stats for the week, then pull actual points for the week from the
+Yahoo players list (S_W_N). Mark `actuals.is_final=1` once every game in the week is
 final. Else exit 0.
 
-    python -m nfl.pm [--force] [--week N]
+The nflverse steps never touch Yahoo. A dead cookie fails only the Yahoo step: the run
+ends ok=0, exit 1, runs.error starting 'cookie dead', with the nflverse rows kept.
+
+    python -m nfl.pm [--force] [--week N] [--skip-yahoo]
 """
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from . import nflverse
 from .common import ET, Run, log, now_utc, retry, today_et, utc_to_et_date
 from .db import init
-from .yahoo_web import CookieDead, YahooWeb
+from .yahoo_web import COOKIE_ERROR, CookieDead, YahooWeb
 
 
 def games_yesterday(conn, season: int):
@@ -33,7 +36,43 @@ def week_is_final(games: list) -> int:
     return 1 if all(g["kickoff_utc"] < cutoff for g in games) else 0
 
 
-def run(force: bool = False, week: int = None) -> int:
+def latest_started_week(games: list):
+    """The highest week with a kickoff already in the past, from the nflverse schedule.
+    Replaces Yahoo's current-week page so a dead cookie cannot stop the nflverse steps."""
+    now = now_utc()
+    weeks = [g["week"] for g in games if g["kickoff_utc"] and g["kickoff_utc"] <= now]
+    return max(weeks) if weeks else None
+
+
+def yahoo_actuals(conn, r, season: int, week: int, is_final: int) -> None:
+    """Yahoo actual points for the week (S_W_N players list), plus the zero-fill once final."""
+    pool = retry(YahooWeb().players, week, "act", what="yahoo players act")
+    rows = [(season, week, p["player_key"], p["pts"], now_utc(), is_final)
+            for p in pool.values() if p["pts"] is not None]
+    conn.executemany(
+        "INSERT OR REPLACE INTO actuals (season, week, player_key, act_pts, pulled_at, is_final) "
+        "VALUES (?,?,?,?,?,?)", rows)
+    conn.commit()
+    r.rows += len(rows)
+    log.info("actuals: %d rows", len(rows))
+    if is_final:
+        # the act list is sorted by points and cut at DEPTH, so players who scored nothing
+        # fall off the end. Once the week is final, no row means 0, and Yahoo counts it as 0.
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO actuals (season, week, player_key, act_pts, pulled_at, is_final) "
+            "SELECT ?, ?, player_key, 0.0, ?, 1 FROM ("
+            "  SELECT player_key FROM projections WHERE season=? AND week=? "
+            "  UNION SELECT player_key FROM rosters WHERE season=? AND week=?)",
+            (season, week, now_utc(), season, week, season, week))
+        conn.execute("UPDATE actuals SET is_final=1 WHERE season=? AND week=?", (season, week))
+        conn.commit()
+        log.info("actuals: %d zero-filled for the final week", cur.rowcount)
+
+
+def run(force: bool = False, week: int = None, skip_yahoo: bool = False) -> int:
+    """Steps run in this order and each stands alone: nflverse schedule, nflverse player
+    stats, then Yahoo actuals. A dead cookie fails only the Yahoo step (ok=0, error starts
+    'cookie dead'); the nflverse rows are already written by then."""
     conn = init()
     with Run(conn, "pm") as r:
         season = datetime.now(ET).year
@@ -45,41 +84,35 @@ def run(force: bool = False, week: int = None) -> int:
         games = retry(nflverse.schedules, season, what="nflverse schedules")
         nflverse.upsert_games(conn, games)
         if week is None:
-            week = yest[0]["week"] if yest else retry(YahooWeb().current_week, what="yahoo week")
+            week = yest[0]["week"] if yest else latest_started_week(games)
+        if week is None:
+            raise RuntimeError("no week has kicked off yet per the nflverse schedule")
         wk = [g for g in games if g["week"] == week]
         is_final = week_is_final(wk)
         log.info("pm: season %s week %s, %d games yesterday, is_final=%d", season, week, len(yest), is_final)
 
+        # nflverse first: it needs no cookie
         try:
-            pool = retry(YahooWeb().players, week, "act", what="yahoo players act")
-        except CookieDead as e:
-            r.error = "cookie"
-            raise RuntimeError(str(e))
-        rows = [(season, week, p["player_key"], p["pts"], now_utc(), is_final)
-                for p in pool.values() if p["pts"] is not None]
-        conn.executemany(
-            "INSERT OR REPLACE INTO actuals (season, week, player_key, act_pts, pulled_at, is_final) "
-            "VALUES (?,?,?,?,?,?)", rows)
-        conn.commit()
-        r.rows += len(rows)
-        log.info("actuals: %d rows", len(rows))
-        if is_final:
-            # the act list is sorted by points and cut at DEPTH, so players who scored nothing
-            # fall off the end. Once the week is final, no row means 0, and Yahoo counts it as 0.
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO actuals (season, week, player_key, act_pts, pulled_at, is_final) "
-                "SELECT ?, ?, player_key, 0.0, ?, 1 FROM ("
-                "  SELECT player_key FROM projections WHERE season=? AND week=? "
-                "  UNION SELECT player_key FROM rosters WHERE season=? AND week=?)",
-                (season, week, now_utc(), season, week, season, week))
-            conn.execute("UPDATE actuals SET is_final=1 WHERE season=? AND week=?", (season, week))
-            conn.commit()
-            log.info("actuals: %d zero-filled for the final week", cur.rowcount)
+            stats = retry(nflverse.player_stats, season, week, what="nflverse player_stats")
+            n = nflverse.upsert_stats(conn, stats)
+            r.rows += n
+            if stats:
+                r.note(f"nflverse week {week}: {n} stats rows")
+            else:
+                r.note(f"nflverse has no week {week} stats yet")
+        except Exception as e:  # noqa: BLE001
+            r.fail(f"nflverse player_stats failed: {e}")
 
-        stats = retry(nflverse.player_stats, season, week, what="nflverse player_stats")
-        r.rows += nflverse.upsert_stats(conn, stats)
-        if not stats:
-            r.error = f"nflverse has no week {week} stats yet"
+        if skip_yahoo:
+            r.note("yahoo skipped (--skip-yahoo)")
+        else:
+            try:
+                yahoo_actuals(conn, r, season, week, is_final)
+            except CookieDead as e:
+                r.fail(f"{COOKIE_ERROR}: Yahoo actuals for week {week} NOT loaded ({e}). "
+                       f"Refresh .secrets/yahoo_cookie.txt, then: python -m nfl.pm --week {week}")
+            except Exception as e:  # noqa: BLE001
+                r.fail(f"yahoo actuals failed: {type(e).__name__}: {e}")
     return 0 if r.ok else 1
 
 
@@ -87,8 +120,9 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="run even with no game yesterday")
     ap.add_argument("--week", type=int, default=None)
+    ap.add_argument("--skip-yahoo", action="store_true", help="nflverse only (backfill with a dead cookie)")
     a = ap.parse_args(argv)
-    return run(a.force, a.week)
+    return run(a.force, a.week, a.skip_yahoo)
 
 
 if __name__ == "__main__":

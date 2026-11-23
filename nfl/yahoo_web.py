@@ -48,7 +48,10 @@ _cur_week = re.compile(r"week=(\d+)[^']*'\s+selected\s*>\s*Week\s+\d+\s*<")
 
 
 class CookieDead(RuntimeError):
-    pass
+    fatal = True  # common.retry raises it at once instead of retrying
+
+
+COOKIE_ERROR = "cookie dead"  # every job's runs.error starts with this when the cookie is the cause
 
 
 def player_key(yahoo_id) -> str:

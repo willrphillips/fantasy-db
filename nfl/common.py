@@ -73,12 +73,16 @@ def read_secret_text(name: str) -> str:
 
 
 def retry(fn, *args, what: str = "", attempts: int = RETRIES, gap: int = RETRY_GAP_S, **kw):
-    """Call fn(*args, **kw); on exception wait `gap` seconds and try again, `attempts` total."""
+    """Call fn(*args, **kw); on exception wait `gap` seconds and try again, `attempts` total.
+    An exception whose class sets `fatal = True` (a dead cookie) is raised at once: waiting
+    ten minutes will not revive it."""
     last = None
     for i in range(1, attempts + 1):
         try:
             return fn(*args, **kw)
         except Exception as e:  # noqa: BLE001
+            if getattr(e, "fatal", False):
+                raise
             last = e
             log.warning("%s attempt %d/%d failed: %s",
                         what or getattr(fn, "__name__", "call"), i, attempts, e)
@@ -98,6 +102,16 @@ class Run:
         self.error = None
         self.ok = 1
 
+    def note(self, msg: str) -> None:
+        """Add to runs.error without failing the run."""
+        self.error = f"{self.error}; {msg}" if self.error else msg
+
+    def fail(self, msg: str) -> None:
+        """One step failed: ok=0 and say why, but let the other steps keep going."""
+        self.ok = 0
+        self.note(msg)
+        log.error("run %s #%s: %s", self.job, self.id, msg)
+
     def __enter__(self):
         cur = self.conn.execute(
             "INSERT INTO runs (job, started_at) VALUES (?, ?)", (self.job, now_utc())
@@ -110,7 +124,8 @@ class Run:
     def __exit__(self, et, ev, tb):
         if et is not None:
             self.ok = 0
-            self.error = "".join(traceback.format_exception(et, ev, tb))[-4000:]
+            tb_text = "".join(traceback.format_exception(et, ev, tb))[-4000:]
+            self.error = f"{self.error}; {tb_text}" if self.error else tb_text
         self.conn.execute(
             "UPDATE runs SET ended_at=?, ok=?, rows=?, error=? WHERE id=?",
             (now_utc(), self.ok, self.rows, self.error, self.id),

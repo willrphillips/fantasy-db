@@ -64,7 +64,31 @@ def q_status(conn, p):
         "WHERE id = (SELECT MAX(id) FROM runs WHERE job = r.job) ORDER BY job"))
     counts = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
               for t in ("games", "players", "rosters", "projections", "actuals", "stats", "runs")}
-    return {"db": str(DB_PATH), "latest_week": _latest_week(conn), "last_runs": jobs, "counts": counts}
+    return {"db": str(DB_PATH), "yahoo_cookie": _cookie_state(conn), "latest_week": _latest_week(conn),
+            "last_runs": jobs, "counts": counts}
+
+
+def _cookie_state(conn) -> dict:
+    """Walk the Yahoo jobs newest first. A run that says the cookie is dead counts toward the
+    streak; a run that loaded Yahoo rows ends it; network errors and 'no games' say nothing."""
+    state, since, checked = "unknown", None, None
+    for r in conn.execute(
+            "SELECT job, started_at, ok, rows, error FROM runs WHERE job IN ('am', 'pm', 'weekly') "
+            "ORDER BY id DESC LIMIT 200"):
+        err = r["error"] or ""
+        if "cookie dead" in err or "cookie is dead" in err:
+            state, since = "dead", r["started_at"]
+            checked = checked or r["started_at"]
+        elif r["ok"] and r["rows"] and "yahoo skipped" not in err:
+            if state == "unknown":
+                state, checked = "ok", r["started_at"]
+            break
+    out = {"state": state, "last_checked": checked}
+    if state == "dead":
+        out["dead_since"] = since
+        out["fix"] = ("put a fresh Cookie header in ~/fantasy-db/.secrets/yahoo_cookie.txt, "
+                      "then re-run the missed weeks: python -m nfl.pm --week N")
+    return out
 
 
 def q_player(conn, p):
