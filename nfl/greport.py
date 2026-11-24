@@ -250,6 +250,26 @@ def build(week: int) -> dict:
                            "replaces": [x["name"] for x in rec if x["player_key"] not in {y.get("player_key") for y in lu}],
                            "proj_sd": line, "p_lowest": p_lowest(line)})
     chop_risk["single_claims"] = sorted(claims, key=lambda c: c["p_lowest"])
+    # best lineup if every claim landed, from the whole unrostered pool, with ranked fallbacks per pick
+    ideal, _ = best_lineup(mine + [dict(m, slot="waiver") for m in pool])
+    ideal_line = team_line([x for x in ideal if x.get("name")])
+    picks = []
+    for i, x in enumerate(ideal):
+        if x.get("current_slot") != "waiver":
+            continue
+        incumbent = lineup[i] if lineup[i].get("name") else None
+        floor_bar = incumbent["risk_adj"] if incumbent else 0
+        p = pos1(x["pos"])
+        ok = FLEX if x["slot"] == "W/R/T" else {p}
+        alts = [m["name"] for m in pool if pos1(m["pos"]) in ok and m["player_key"] != x["player_key"]
+                and m["player_key"] not in {y.get("player_key") for y in ideal} and m["risk_adj"] > floor_bar][:4]
+        picks.append({"slot": x["slot"], "claim": x["name"], "pos": x["pos"], "team": x["team"], "proj": x["proj"],
+                      "risk_adj": x["risk_adj"], "floor_p25": x["floor_p25"], "sd": x["sd"],
+                      "from_chopped_team": x.get("from_chopped_team"), "yahoo_status": x.get("yahoo_status"),
+                      "instead_of": incumbent["name"] if incumbent else None,
+                      "instead_of_risk_adj": floor_bar, "fallbacks": alts})
+    chop_risk["ideal"] = {"proj_sd": ideal_line, "p_lowest": p_lowest(ideal_line), "picks": picks,
+                          "lineup": [(x["slot"], x.get("name"), x.get("current_slot")) for x in ideal]}
     by_pos = defaultdict(list)
     for m in pool:
         by_pos[pos1(m["pos"])].append(m)
