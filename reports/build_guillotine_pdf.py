@@ -66,7 +66,7 @@ def build(rep, counts, out, headline, deadlines):
                        f"changed or claimed on Yahoo.", SM))
 
     s.append(Paragraph("Deadlines", H2))
-    s.append(table([["What", "When / rule"]] + deadlines, [2.6 * inch, 7.4 * inch]))
+    s.append(table([["What", "When / rule"]] + [[a, Paragraph(b, B)] for a, b in deadlines], [2.2 * inch, 7.8 * inch]))
 
     s.append(Paragraph("Headline moves", H2))
     for i, h in enumerate(headline, 1):
@@ -128,12 +128,15 @@ def build(rep, counts, out, headline, deadlines):
                        "understate it). 40,000 normal draws, fixed seed.", SM))
 
     s.append(Paragraph("Waiver claims, best lineup from the whole pool (FAB bid $0: you have $0)", H2))
-    rows = [["Slot", "Claim", "Pos", "Team", "Proj", "Floor p25", "SD", "Risk-adj", "Instead of (risk-adj)", "Fallbacks if it fails"]]
+    rows = [["Claim", "Pos", "Team", "Proj", "Floor p25", "SD", "Risk-adj", "Alone it replaces", "Chop risk alone",
+             "Verdict", "Fallbacks if it fails (same position, each cuts risk 1+ pt)"]]
     for p in cr["ideal"]["picks"]:
-        rows.append([p["slot"], p["claim"], p["pos"], p["team"], f(p["proj"], 2), f(p["floor_p25"]), f(p["sd"]),
-                     f(p["risk_adj"], 2), f"{p['instead_of']} ({f(p['instead_of_risk_adj'], 2)})",
-                     Paragraph(", ".join(p["fallbacks"]) or "none better than the incumbent", SM)])
-    s.append(table(rows, [x * inch for x in (0.45, 1.3, 0.4, 0.45, 0.45, 0.6, 0.4, 0.55, 1.9, 3.1)]))
+        rows.append([p["claim"], p["pos"], p["team"], f(p["proj"], 2), f(p["floor_p25"]), f(p["sd"]),
+                     f(p["risk_adj"], 2), Paragraph(", ".join(p["replaces_alone"] or []), SM),
+                     f"{p['p_lowest_alone']:.1%}" if p["p_lowest_alone"] is not None else "",
+                     Paragraph(p["verdict"], SM), Paragraph(", ".join(p["fallbacks"]) or "none", SM)])
+    s.append(table(rows, [x * inch for x in (1.2, 0.4, 0.45, 0.45, 0.6, 0.4, 0.55, 1.3, 0.75, 1.3, 2.5)]))
+    s.append(Paragraph(f"Baseline: recommended lineup, no claims, {cr['will_recommended']['p_lowest']:.1%}.", SM))
 
     s.append(Paragraph("Best unrostered players by position (every free player shows Yahoo status W (Nov 25))", H2))
     rows = [["Pos", "Player", "Team", "From chopped team", f"Wk{w} opp", "Proj", "Mean", "SD", "Floor p25", "Games",

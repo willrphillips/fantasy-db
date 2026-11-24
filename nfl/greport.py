@@ -244,39 +244,52 @@ def build(week: int) -> dict:
                  "will_current": {"proj_sd": teams_now[will_name]["proj_sd"],
                                   "p_lowest": p_lowest(teams_now[will_name]["proj_sd"])},
                  "will_recommended": {"proj_sd": team_line(rec), "p_lowest": p_lowest(team_line(rec))}}
-    # what each freshly released player would do for Will alone (one claim at a time)
-    claims = []
-    for c in [m for m in pool if m["from_chopped_team"]]:
-        lu, _ = best_lineup(mine + [dict(c, slot="waiver")])
-        if any(x.get("player_key") == c["player_key"] for x in lu):
-            line = team_line([x for x in lu if x.get("name")])
-            claims.append({"name": c["name"], "pos": c["pos"], "yahoo_status": c["yahoo_status"],
-                           "replaces": [x["name"] for x in rec if x["player_key"] not in {y.get("player_key") for y in lu}],
-                           "proj_sd": line, "p_lowest": p_lowest(line)})
-    chop_risk["single_claims"] = sorted(claims, key=lambda c: c["p_lowest"])
-    # best lineup if every claim landed, from the whole unrostered pool, with ranked fallbacks per pick
-    ideal, _ = best_lineup(mine + [dict(m, slot="waiver") for m in pool])
-    ideal_line = team_line([x for x in ideal if x.get("name")])
-    picks = []
-    for i, x in enumerate(ideal):
-        if x.get("current_slot") != "waiver":
-            continue
-        incumbent = lineup[i] if lineup[i].get("name") else None
-        floor_bar = incumbent["risk_adj"] if incumbent else 0
-        p = pos1(x["pos"])
-        ok = FLEX if x["slot"] == "W/R/T" else {p}
-        alts = [m["name"] for m in pool if pos1(m["pos"]) in ok and m["player_key"] != x["player_key"]
-                and m["player_key"] not in {y.get("player_key") for y in ideal} and m["risk_adj"] > floor_bar][:4]
-        picks.append({"slot": x["slot"], "claim": x["name"], "pos": x["pos"], "team": x["team"], "proj": x["proj"],
-                      "risk_adj": x["risk_adj"], "floor_p25": x["floor_p25"], "sd": x["sd"],
-                      "from_chopped_team": x.get("from_chopped_team"), "yahoo_status": x.get("yahoo_status"),
-                      "instead_of": incumbent["name"] if incumbent else None,
-                      "instead_of_risk_adj": floor_bar, "fallbacks": alts})
-    chop_risk["ideal"] = {"proj_sd": ideal_line, "p_lowest": p_lowest(ideal_line), "picks": picks,
-                          "lineup": [(x["slot"], x.get("name"), x.get("current_slot")) for x in ideal]}
+    # what each candidate would do for Will alone (one claim at a time): the freshly released players plus
+    # the top 8 unrostered at each position. Same random draws every time, so the differences are real.
     by_pos = defaultdict(list)
     for m in pool:
         by_pos[pos1(m["pos"])].append(m)
+    base_p = chop_risk["will_recommended"]["p_lowest"]
+    cands = {m["player_key"]: m for m in pool if m["from_chopped_team"]}
+    for v in by_pos.values():
+        for m in v[:8]:
+            cands[m["player_key"]] = m
+    claims = []
+    for c in cands.values():
+        lu, _ = best_lineup(mine + [dict(c, slot="waiver")])
+        if not any(x.get("player_key") == c["player_key"] for x in lu):
+            continue
+        line = team_line([x for x in lu if x.get("name")])
+        pl = p_lowest(line)
+        claims.append({"name": c["name"], "player_key": c["player_key"], "pos": c["pos"], "team": c["team"],
+                       "proj": c["proj"], "floor_p25": c["floor_p25"], "sd": c["sd"], "risk_adj": c["risk_adj"],
+                       "from_chopped_team": c["from_chopped_team"], "yahoo_status": c["yahoo_status"],
+                       "replaces": [x["name"] for x in rec if x["player_key"] not in {y.get("player_key") for y in lu}],
+                       "proj_sd": line, "p_lowest": pl, "cut_in_chop_risk": round(base_p - pl, 3)})
+    claims.sort(key=lambda c: c["p_lowest"])
+    chop_risk["single_claims"] = claims
+    # best lineup if every claim landed, from the whole unrostered pool; fallbacks = other single claims at the
+    # same position that also cut the chop risk by at least one point, best first
+    ideal, _ = best_lineup(mine + [dict(m, slot="waiver") for m in pool])
+    ideal_line = team_line([x for x in ideal if x.get("name")])
+    in_ideal = {y.get("player_key") for y in ideal}
+    by_key = {c["player_key"]: c for c in claims}
+    picks = []
+    for x in ideal:
+        if x.get("current_slot") != "waiver":
+            continue
+        one = by_key.get(x["player_key"], {})
+        alts = [c["name"] for c in claims if pos1(c["pos"]) == pos1(x["pos"]) and c["player_key"] not in in_ideal
+                and c["cut_in_chop_risk"] >= 0.01][:4]
+        picks.append({"slot": x["slot"], "claim": x["name"], "pos": x["pos"], "team": x["team"], "proj": x["proj"],
+                      "risk_adj": x["risk_adj"], "floor_p25": x["floor_p25"], "sd": x["sd"],
+                      "from_chopped_team": x.get("from_chopped_team"), "yahoo_status": x.get("yahoo_status"),
+                      "replaces_alone": one.get("replaces"), "p_lowest_alone": one.get("p_lowest"),
+                      "cut_in_chop_risk": one.get("cut_in_chop_risk"),
+                      "verdict": "claim" if (one.get("cut_in_chop_risk") or 0) >= 0.01 else "skip: under 1 point of chop risk",
+                      "fallbacks": alts})
+    chop_risk["ideal"] = {"proj_sd": ideal_line, "p_lowest": p_lowest(ideal_line), "picks": picks,
+                          "lineup": [(x["slot"], x.get("name"), x.get("current_slot")) for x in ideal]}
 
     my_wk = {}
     for wk in rundown:
