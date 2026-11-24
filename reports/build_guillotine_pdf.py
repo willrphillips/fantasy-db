@@ -106,15 +106,44 @@ def build(rep, counts, out, headline, deadlines):
                        "over the league average (above 1.00 is a soft matchup). SOS = mean of the week "
                        f"{w} and week {w+1} matchup factors (the guillotine ends when one team is left).", SM))
 
-    # ---------------------------------------------------------------- waivers
-    s.append(Paragraph("Waiver pool (not on any of the three rosters), best risk-adjusted first", H2))
-    rows = [["Player", "Pos", "Team", "Yahoo status", "From chopped team", f"Wk{w} opp", "Proj", "Mean", "SD",
-             "Floor p25", "Games", "Matchup", "SOS", "Risk-adj"]]
-    for m in rep["waiver_pool"][:14]:
-        rows.append([m["name"], m["pos"], m["team"], m.get("yahoo_status") or "", "yes" if m["from_chopped_team"] else "",
-                     m["opp"], f(m["proj"], 2), f(m["mean"]), f(m["sd"]), f(m["floor_p25"]), m["games"],
-                     f(m["matchup"], 2), f(m["sos"], 2), f(m["risk_adj"], 2)])
-    s.append(table(rows, [x * inch for x in (1.5, 0.45, 0.45, 1.3, 0.9, 0.6, 0.5, 0.5, 0.45, 0.6, 0.5, 0.6, 0.45, 0.6)]))
+    # ---------------------------------------------------------------- chop risk + claims
+    s.append(PageBreak())
+    cr = rep["chop_risk"]
+    s.append(Paragraph(f"Chance you are the lowest score in week {w}", H2))
+    rows = [["Scenario", "Your proj", "Your SD", "P(you are lowest)"]]
+    rows.append(["Current Yahoo lineup", f(cr["will_current"]["proj_sd"][0], 2), f(cr["will_current"]["proj_sd"][1], 2),
+                 f"{cr['will_current']['p_lowest']:.1%}"])
+    rows.append(["Recommended lineup, no claims", f(cr["will_recommended"]["proj_sd"][0], 2),
+                 f(cr["will_recommended"]["proj_sd"][1], 2), f"{cr['will_recommended']['p_lowest']:.1%}"])
+    for c in cr["single_claims"][:3]:
+        rows.append([f"+ {c['name']} only (replaces {', '.join(c['replaces'])})", f(c["proj_sd"][0], 2),
+                     f(c["proj_sd"][1], 2), f"{c['p_lowest']:.1%}"])
+    rows.append(["Every top claim lands (best lineup from the whole pool)", f(cr["ideal"]["proj_sd"][0], 2),
+                 f(cr["ideal"]["proj_sd"][1], 2), f"{cr['ideal']['p_lowest']:.1%}"])
+    s.append(table(rows, [4.6 * inch, 0.9 * inch, 0.9 * inch, 1.2 * inch]))
+    opp = "; ".join(f"{n}: proj {f(t['proj_sd'][0], 2)}, SD {f(t['proj_sd'][1], 2)}"
+                    for n, t in cr["teams"].items() if not t["is_will"])
+    s.append(Paragraph(f"Opponents' current starters: {opp}. Team SD = square root of the sum of each starter's "
+                       "weekly variance (players treated as independent, so same-team stacks such as Burrow + Chase "
+                       "understate it). 40,000 normal draws, fixed seed.", SM))
+
+    s.append(Paragraph("Waiver claims, best lineup from the whole pool (FAB bid $0: you have $0)", H2))
+    rows = [["Slot", "Claim", "Pos", "Team", "Proj", "Floor p25", "SD", "Risk-adj", "Instead of (risk-adj)", "Fallbacks if it fails"]]
+    for p in cr["ideal"]["picks"]:
+        rows.append([p["slot"], p["claim"], p["pos"], p["team"], f(p["proj"], 2), f(p["floor_p25"]), f(p["sd"]),
+                     f(p["risk_adj"], 2), f"{p['instead_of']} ({f(p['instead_of_risk_adj'], 2)})",
+                     Paragraph(", ".join(p["fallbacks"]) or "none better than the incumbent", SM)])
+    s.append(table(rows, [x * inch for x in (0.45, 1.3, 0.4, 0.45, 0.45, 0.6, 0.4, 0.55, 1.9, 3.1)]))
+
+    s.append(Paragraph("Best unrostered players by position (every free player shows Yahoo status W (Nov 25))", H2))
+    rows = [["Pos", "Player", "Team", "From chopped team", f"Wk{w} opp", "Proj", "Mean", "SD", "Floor p25", "Games",
+             "Matchup", f"Wk{w+1} opp", "SOS", "Risk-adj"]]
+    for pos in ("QB", "RB", "WR", "TE"):
+        for m in rep["waiver_by_pos"].get(pos, [])[:4]:
+            rows.append([pos, m["name"], m["team"], "yes" if m["from_chopped_team"] else "", m["opp"], f(m["proj"], 2),
+                         f(m["mean"]), f(m["sd"]), f(m["floor_p25"]), m["games"], f(m["matchup"], 2), m["opp_next"],
+                         f(m["sos"], 2), f(m["risk_adj"], 2)])
+    s.append(table(rows, [x * inch for x in (0.4, 1.5, 0.45, 0.9, 0.6, 0.5, 0.5, 0.45, 0.6, 0.5, 0.6, 0.6, 0.45, 0.6)]))
 
     # ---------------------------------------------------------------- rundown
     s.append(PageBreak())
@@ -185,6 +214,12 @@ def build(rep, counts, out, headline, deadlines):
     s.append(Paragraph("<b>Method</b>", SM))
     for line in rep["method"].strip().splitlines():
         s.append(Paragraph(line.replace("<", "&lt;"), MONO))
+    s.append(Paragraph("<b>Queries behind the recommendations</b> (nfl/greport.py; the lineup, claims and chop risk "
+                       "are computed in Python from these rows)", SM))
+    for name, sql in rep.get("sql", {}).items():
+        s.append(Paragraph(f"<b>{name}</b>", SM))
+        for line in sql.strip().splitlines():
+            s.append(Paragraph(line.replace("<", "&lt;").replace(" ", "&nbsp;"), MONO))
     doc.build(s)
 
 

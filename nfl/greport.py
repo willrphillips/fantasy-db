@@ -71,6 +71,11 @@ SELECT a.week, a.player_key, pl.name, pl.team, pl.pos, pl.gsis_id, a.act_pts,
 FROM actuals a JOIN players pl USING (player_key)
 WHERE a.week < ? AND a.is_final=1"""
 
+SQL_POOL = """
+SELECT p.player_key, pl.name, pl.team, pl.pos, p.proj_pts FROM projections p
+JOIN players pl USING (player_key) WHERE p.week=? AND p.proj_pts > 0 ORDER BY p.proj_pts DESC
+-- minus every player on any week-N roster (done in Python)"""
+
 SQL_ROSTER = """
 SELECT r.slot, pl.player_key, pl.name, pl.team, pl.pos, pl.bye_week, p.proj_pts
 FROM rosters r JOIN players pl USING (player_key)
@@ -184,8 +189,7 @@ def build(week: int) -> dict:
     except Exception as e:  # noqa: BLE001
         status["_error"] = str(e)
     pool = []
-    for r in q(conn, "SELECT p.player_key, pl.name, pl.team, pl.pos, p.proj_pts FROM projections p "
-                     "JOIN players pl USING (player_key) WHERE p.week=? AND p.proj_pts > 0 ORDER BY p.proj_pts DESC", (week,)):
+    for r in q(conn, SQL_POOL, (week,)):
         if r["player_key"] in rostered:
             continue
         m = metrics(r["player_key"], r["name"], r["team"], r["pos"], r["proj_pts"])
@@ -289,7 +293,11 @@ def build(week: int) -> dict:
             "chop_risk": chop_risk, "chopped_last_week": chopped_team,
             "pos_avg_allowed": {k: round(v, 2) for k, v in pos_avg.items()},
             "recompute_check": recompute, "status_error": status.get("_error"),
-            "standings_now": g.summary(conn), "method": __doc__}
+            "standings_now": g.summary(conn), "method": __doc__,
+            "sql": {"team week scores (rundown, chop check)": SQL_TEAM_WEEKS,
+                    "player weekly history (mean, SD, floor, matchup)": SQL_PLAYER_WEEKS,
+                    "roster with week projection (start/sit, chop risk)": SQL_ROSTER,
+                    "waiver pool (claims)": SQL_POOL}}
 
 
 def main(argv):
