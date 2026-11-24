@@ -7,6 +7,23 @@ Dated status log for fantasy-db. Newest entry first.
 > The MLB pipeline is RETIRED (2026-09-14 entry); everything below that entry is the MLB
 > record and nothing in it runs.
 
+## 2026-11-24: guillotine league added (Yahoo 1642654, Will = team 11 "Pirrotine")
+
+Smallest thing that works, season nearly over. Decided and shipped:
+
+- **One page, own db.** `nfl/guillotine.py` reads the league home page only
+  (`yfa-guillotine-standings-table` for survivors with this week's live and projected points,
+  `yfa-guillotine-chopped-standings-table` for who was chopped which week) into
+  `guillotine.db`. It never opens `nfl.db`. Same rules: a `runs` row every run, 3 retries,
+  no Discord, no AI.
+- **Every 15 minutes** (`com.willr.nfl-guillotine`, StartInterval 900): one page fetch, so
+  live scores are at most 15 minutes stale during games.
+- **Read path:** `GET /guillotine` on the existing nfl-serve (`:8094`, same key). No second
+  port. Returns survivors, Will's margin over the lowest other survivor (projected and live),
+  a `danger` label (under 0 / under 10 / 10+ projected points), and the chop list.
+- **Edwin:** a "Guillotine league" thread in Discord answers from `/guillotine` (edwin repo).
+- No per-player rosters or weekly score history for this league: not needed for "how am I doing".
+
 ## 2026-11-23: a dead Yahoo cookie no longer stops the nflverse steps
 
 The cookie died around 2026-10-30 (first `cookie dead` run 2026-11-02 07:00Z). `pm` crashed

@@ -13,6 +13,8 @@ Endpoints (GET, JSON):
     /deltas?pos=RB&n=20           biggest over/under-performers season to date
     /fa?pos=TE&n=15[&week=N]      projected players not on any roster this week
     /sql?q=SELECT ...             SELECT only, 5 s timeout, 500-row cap
+    /guillotine                   Will's guillotine league (guillotine.db, not nfl.db): survivors,
+                                  live + projected points this week, Will's margin, chop list
 """
 from __future__ import annotations
 
@@ -197,8 +199,20 @@ def q_sql(conn, p):
         conn.set_progress_handler(None, 0)
 
 
+def q_guillotine(conn, p):
+    from . import guillotine  # its own db; the nfl.db conn is not used
+    if not guillotine.DB.exists():
+        return {"error": f"{guillotine.DB} not created yet; run python -m nfl.guillotine"}, 503
+    g = connect(guillotine.DB, readonly=True)
+    try:
+        return guillotine.summary(g)
+    finally:
+        g.close()
+
+
 ROUTES = {"/status": q_status, "/player": q_player, "/roster": q_roster, "/week": q_week,
-          "/deltas": q_deltas, "/fa": q_fa, "/sql": q_sql}
+          "/deltas": q_deltas, "/fa": q_fa, "/sql": q_sql,
+          "/guillotine": q_guillotine}
 
 
 # ------------------------------------------------------------------ server

@@ -45,3 +45,7 @@ nfl.db
 nfl.db-journal
 nfl.db-wal
 nfl.db-shm
+guillotine.db
+guillotine.db-journal
+guillotine.db-wal
+guillotine.db-shm

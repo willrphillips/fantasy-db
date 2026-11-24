@@ -93,7 +93,8 @@ def parse_player_cell(cell) -> dict:
 
 
 class YahooWeb:
-    def __init__(self):
+    def __init__(self, league_id: int = None):
+        self.base = f"https://football.fantasysports.yahoo.com/f1/{league_id or LEAGUE_ID}"
         cookie = read_secret_text(COOKIE_FILE)
         if not cookie or cookie.startswith("["):
             raise CookieDead("cookie file is empty or still the placeholder")
@@ -106,7 +107,7 @@ class YahooWeb:
         if self._n:
             time.sleep(PAUSE_S)
         self._n += 1
-        r = self.s.get(f"{BASE}{path}", params=params, timeout=60, allow_redirects=True)
+        r = self.s.get(f"{self.base}{path}", params=params, timeout=60, allow_redirects=True)
         if "login.yahoo.com" in r.url or r.status_code in (401, 403):
             raise CookieDead(f"redirected to login ({r.url[:60]}); cookie is dead")
         r.raise_for_status()
