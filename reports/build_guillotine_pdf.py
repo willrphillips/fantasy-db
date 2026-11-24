@@ -128,8 +128,8 @@ def build(rep, counts, out, headline, deadlines):
                        "understate it). 40,000 normal draws, fixed seed.", SM))
 
     s.append(Paragraph("Waiver claims, best lineup from the whole pool (FAB bid $0: you have $0)", H2))
-    rows = [["Claim", "Pos", "Team", "Proj", "Floor p25", "SD", "Risk-adj", "Alone it replaces", "Chop risk alone",
-             "Verdict", "Fallbacks if it fails (same position, each cuts risk 1+ pt)"]]
+    rows = [["Claim", "Pos", "Team", "Proj", "Floor p25", "SD", "Risk-adj", "Alone it replaces", "Chop risk",
+             "Verdict", "Fallbacks (same pos, each cuts risk 1+ pt)"]]
     for p in cr["ideal"]["picks"]:
         rows.append([p["claim"], p["pos"], p["team"], f(p["proj"], 2), f(p["floor_p25"]), f(p["sd"]),
                      f(p["risk_adj"], 2), Paragraph(", ".join(p["replaces_alone"] or []), SM),
@@ -139,7 +139,7 @@ def build(rep, counts, out, headline, deadlines):
     s.append(Paragraph(f"Baseline: recommended lineup, no claims, {cr['will_recommended']['p_lowest']:.1%}.", SM))
 
     s.append(Paragraph("Best unrostered players by position (every free player shows Yahoo status W (Nov 25))", H2))
-    rows = [["Pos", "Player", "Team", "From chopped team", f"Wk{w} opp", "Proj", "Mean", "SD", "Floor p25", "Games",
+    rows = [["Pos", "Player", "Team", "Chopped tm", f"Wk{w} opp", "Proj", "Mean", "SD", "Floor p25", "Games",
              "Matchup", f"Wk{w+1} opp", "SOS", "Risk-adj"]]
     for pos in ("QB", "RB", "WR", "TE"):
         for m in rep["waiver_by_pos"].get(pos, [])[:4]:
@@ -207,7 +207,7 @@ def build(rep, counts, out, headline, deadlines):
                        "(within 0.1; return and fumble-return TDs are not in nflverse stats, so a few miss):", SM))
     s.append(table(rows, [0.6 * inch, 1.4 * inch, 1.7 * inch, 1.7 * inch]))
     s.append(Spacer(1, 4))
-    rows = [["Week"] + [f"{d} {t}" for d in ("nfl.db", "guillotine.db") for t in ("rosters", "proj", "actuals", "stats")]]
+    rows = [["Week"] + [f"{d} {t}" for d in ("nfl", "guill.") for t in ("rosters", "proj", "actuals", "stats")]]
     for r in counts:
         rows.append([r["week"]] + [r[f"{d}_{t}"] for d in ("nfl", "g") for t in ("rosters", "projections", "actuals", "stats")])
     s.append(Paragraph("Rows per week. stats are nflverse (league-independent, copied read-only); rosters are 8 teams "

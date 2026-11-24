@@ -7,6 +7,23 @@ Dated status log for fantasy-db. Newest entry first.
 > The MLB pipeline is RETIRED (2026-09-14 entry); everything below that entry is the MLB
 > record and nothing in it runs.
 
+## 2026-11-24 (later): guillotine.db mirrors nfl.db; week-12 report
+
+Will: the guillotine league scores differently, so it gets its own mirror of the database.
+
+- **Scoring differs.** Read from Yahoo league 1642654 /settings: half-PPR (0.5 per catch), no K,
+  no DEF, roster QB, WR, WR, RB, RB, TE, W/R/T + 7 BN + IR. The main league is full PPR with K,
+  DEF and a superflex. Every guillotine point is Yahoo's own league-1642654 figure; a recompute
+  from nflverse stats under half-PPR matches about 99% of players per week (full PPR: 0).
+- **`nfl/gbackfill.py`** fills guillotine.db with nfl.db's schema: league, league_teams, rosters,
+  projections, actuals (zero-filled once final) from league-1642654 pages; weeks, games, stats and
+  the gsis map copied from nfl.db opened read-only. Weeks 1-12 backfilled (runs #4, #5, ok=1).
+  Daily `--recent` at 03:30 (`com.willr.nfl-gbackfill`).
+- **`nfl/greport.py`** + `reports/build_guillotine_pdf.py`: rundown, start/sit on floor
+  (projection minus half the weekly SD), claims scored by how much each alone cuts Will's chance of
+  the lowest score (Monte Carlo on team proj and SD). First report:
+  `reports/2026-11-24_guillotine_week12.pdf`. Recommendations only; nothing is claimed on Yahoo.
+
 ## 2026-11-24: guillotine league added (Yahoo 1642654, Will = team 11 "Pirrotine")
 
 Smallest thing that works, season nearly over. Decided and shipped:
