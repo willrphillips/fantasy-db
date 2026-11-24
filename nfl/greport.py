@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import random
 import statistics as st
 import sys
 from collections import defaultdict
@@ -150,17 +152,21 @@ def build(week: int) -> dict:
     tk = f"{g.LEAGUE_ID}.t.{g.WILL_TEAM_ID}"
     mine = [dict(metrics(r["player_key"], r["name"], r["team"], r["pos"], r["proj_pts"]), slot=r["slot"])
             for r in q(conn, SQL_ROSTER, (week, tk))]
-    lineup, used = [], set()
-    for slot in SLOTS:
-        ok = FLEX if slot == "W/R/T" else {slot}
-        cands = [m for m in mine if m["player_key"] not in used and pos1(m["pos"]) in ok
-                 and m["opp"] != "BYE" and (m["proj"] or 0) > 0]
-        if not cands:
-            lineup.append({"slot": slot, "name": None})
-            continue
-        best = max(cands, key=lambda m: m["risk_adj"])
-        used.add(best["player_key"])
-        lineup.append({"slot": slot, **best})
+    def best_lineup(players):
+        out, taken = [], set()
+        for slot in SLOTS:
+            ok = FLEX if slot == "W/R/T" else {slot}
+            cands = [m for m in players if m["player_key"] not in taken and pos1(m["pos"]) in ok
+                     and m["opp"] != "BYE" and (m["proj"] or 0) > 0]
+            if not cands:
+                out.append({"slot": slot, "name": None})
+                continue
+            best = max(cands, key=lambda m: m["risk_adj"])
+            taken.add(best["player_key"])
+            out.append({**best, "slot": slot, "current_slot": best.get("slot", "waiver")})
+        return out, taken
+
+    lineup, used = best_lineup(mine)
     for m in mine:
         m["recommended"] = "START" if m["player_key"] in used else "SIT"
         m["change"] = (m["recommended"] == "START") != (m["slot"] not in ("BN", "IR"))
@@ -204,6 +210,50 @@ def build(week: int) -> dict:
         JOIN stats s ON s.gsis_id=pl.gsis_id AND s.week=a.week AND s.season=a.season
         WHERE a.week < ? AND COALESCE(s.rec,0) > 0 GROUP BY a.week""", (week,))
 
+    # ---------------------------------------------------------------- chop risk this week
+    # each alive team's current starters: proj sum and sd = sqrt(sum of player sd^2) (players treated as
+    # independent); then P(lowest) by Monte Carlo on normals, current lineup vs the recommended one.
+    def team_line(players):
+        proj = sum(m["proj"] or 0 for m in players)
+        sd = math.sqrt(sum((m["sd"] if m["sd"] is not None else 6.0) ** 2 for m in players))
+        return round(proj, 2), round(sd, 2)
+
+    teams_now = {}
+    for t in q(conn, "SELECT team_id, team_name, is_will FROM teams WHERE alive=1"):
+        ps = [metrics(r["player_key"], r["name"], r["team"], r["pos"], r["proj_pts"])
+              for r in q(conn, SQL_ROSTER, (week, f"{g.LEAGUE_ID}.t.{t['team_id']}")) if r["slot"] not in ("BN", "IR")]
+        teams_now[t["team_name"]] = {"is_will": t["is_will"], "starters": len(ps), "proj_sd": team_line(ps)}
+    rec = [m for m in lineup if m.get("name")]
+    will_name = next(n for n, t in teams_now.items() if t["is_will"])
+
+    def p_lowest(will_line, n=40000):
+        rnd = random.Random(12)
+        lines = {n_: t["proj_sd"] for n_, t in teams_now.items()}
+        lines[will_name] = will_line
+        low = 0
+        for _ in range(n):
+            draw = {k: rnd.gauss(mu, sd) for k, (mu, sd) in lines.items()}
+            low += min(draw, key=draw.get) == will_name
+        return round(low / n, 3)
+
+    chop_risk = {"teams": teams_now,
+                 "will_current": {"proj_sd": teams_now[will_name]["proj_sd"],
+                                  "p_lowest": p_lowest(teams_now[will_name]["proj_sd"])},
+                 "will_recommended": {"proj_sd": team_line(rec), "p_lowest": p_lowest(team_line(rec))}}
+    # what each freshly released player would do for Will alone (one claim at a time)
+    claims = []
+    for c in [m for m in pool if m["from_chopped_team"]]:
+        lu, _ = best_lineup(mine + [dict(c, slot="waiver")])
+        if any(x.get("player_key") == c["player_key"] for x in lu):
+            line = team_line([x for x in lu if x.get("name")])
+            claims.append({"name": c["name"], "pos": c["pos"], "yahoo_status": c["yahoo_status"],
+                           "replaces": [x["name"] for x in rec if x["player_key"] not in {y.get("player_key") for y in lu}],
+                           "proj_sd": line, "p_lowest": p_lowest(line)})
+    chop_risk["single_claims"] = sorted(claims, key=lambda c: c["p_lowest"])
+    by_pos = defaultdict(list)
+    for m in pool:
+        by_pos[pos1(m["pos"])].append(m)
+
     my_wk = {}
     for wk in rundown:
         for t in wk["teams"]:
@@ -214,7 +264,9 @@ def build(week: int) -> dict:
     return {"league_id": g.LEAGUE_ID, "week": week, "season": season, "scoring": sc,
             "roster_slots": json.loads(conn.execute("SELECT roster_slots_json FROM league").fetchone()[0]),
             "rundown": rundown, "will_by_week": my_wk, "lineup": lineup, "roster": mine,
-            "waiver_pool": pool[:25], "chopped_last_week": chopped_team,
+            "waiver_pool": pool[:25], "waiver_by_pos": {p: v[:6] for p, v in by_pos.items()},
+            "waiver_chopped_team": [m for m in pool if m["from_chopped_team"]],
+            "chop_risk": chop_risk, "chopped_last_week": chopped_team,
             "pos_avg_allowed": {k: round(v, 2) for k, v in pos_avg.items()},
             "recompute_check": recompute, "status_error": status.get("_error"),
             "standings_now": g.summary(conn), "method": __doc__}
