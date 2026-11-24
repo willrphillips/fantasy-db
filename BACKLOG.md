@@ -6,7 +6,7 @@
 |---|---|
 | **State** | NFL pipeline LIVE on old-will-macbook. MLB retired 2026-09-14. |
 | **Where** | `~/fantasy-db` on the Mac (Tailscale `100.126.114.42`), venv on system Python 3.9, `nfl.db` beside it. Nothing on atlas, nothing on the PC. |
-| **Jobs** | launchd: `nfl-weekly` Tue 05:00, `nfl-am` 07:00 game days, `nfl-pm` 02:00 after games, `nfl-serve` always, `nfl-guillotine` every 15 min (league 1642654 into `guillotine.db`, read at `/guillotine`; 2026-11-24). `launchctl list \| grep nfl` shows 5. |
+| **Jobs** | launchd: `nfl-weekly` Tue 05:00, `nfl-am` 07:00 game days, `nfl-pm` 02:00 after games, `nfl-serve` always, `nfl-guillotine` every 15 min (league 1642654 into `guillotine.db`, read at `/guillotine`; 2026-11-24), `nfl-gbackfill --recent` 03:30 daily (guillotine.db mirrors nfl.db's tables under that league's half-PPR scoring). `launchctl list \| grep nfl` shows 6. Guillotine report: `python -m nfl.greport --week N` on the Mac, then `reports/build_guillotine_pdf.py`. |
 | **Read path** | `http://100.126.114.42:8094` with `Authorization: Bearer <~/fantasy-db/.secrets/serve-key>`; `/health` needs no key. Endpoints in `nfl/serve.py` docstring. |
 | **Is it healthy?** | `curl -H "Authorization: Bearer $KEY" http://100.126.114.42:8094/status` shows `yahoo_cookie.state` (`dead` + `dead_since` when the cookie died) and the last am / pm / weekly run with `ok` and `rows`. A dead cookie fails only the Yahoo step; nflverse still loads (2026-11-23). |
 | **Secrets** | `.secrets/yahoo_cookie.txt` is the one that matters. Refresh: copy the `Cookie:` header from a logged-in Chrome request to football.fantasysports.yahoo.com into that file. |
